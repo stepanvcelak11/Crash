@@ -8,7 +8,8 @@ const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 export const rec = {
   data: null, n: 0, frames: 0, max: 0, acc: 0, duration: 0,
   start(maxSeconds = 70) {
-    this.n = entities.length; this.max = Math.floor(maxSeconds * HZ);
+    this.idx = []; entities.forEach((e, i) => { if (!e.static && e.mesh) this.idx.push(i); });   // static scenery never changes: don't record it
+    this.n = this.idx.length; this.max = Math.floor(maxSeconds * HZ);
     this.data = new Float32Array(this.max * this.n * STRIDE);
     this.frames = 0; this.acc = 0; this.duration = 0;
     this.capture();
@@ -22,7 +23,7 @@ export const rec = {
     if (!this.data || this.frames >= this.max) return;
     const o = this.frames * this.n * STRIDE, d = this.data;
     for (let i = 0; i < this.n; i++) {
-      const e = entities[i], b = e.body, k = o + i * STRIDE;
+      const e = entities[this.idx[i]], b = e.body, k = o + i * STRIDE;
       d[k] = e.mesh && e.mesh.visible ? 1 : 0;
       d[k + 1] = b.position.x; d[k + 2] = b.position.y; d[k + 3] = b.position.z;
       d[k + 4] = b.quaternion.x; d[k + 5] = b.quaternion.y; d[k + 6] = b.quaternion.z; d[k + 7] = b.quaternion.w;
@@ -36,7 +37,7 @@ export const rec = {
     const i0 = Math.floor(f), i1 = Math.min(this.frames - 1, i0 + 1), a = f - i0;
     const d = this.data, n = this.n;
     for (let i = 0; i < n; i++) {
-      const e = entities[i]; if (!e.mesh) continue;
+      const e = entities[this.idx[i]]; if (!e.mesh) continue;
       const k0 = i0 * n * STRIDE + i * STRIDE, k1 = i1 * n * STRIDE + i * STRIDE;
       const vis = d[k0] > 0.5;
       e.mesh.visible = vis;

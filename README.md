@@ -18,6 +18,13 @@ Lokálně: `python3 -m http.server 8000` a otevřít `http://localhost:8000`.
 | **W / S** (v editoru) | posun kamery po trati |
 | **M** | zvuk |
 
+## Novinky (v3)
+- **Grafika:** odrazy prostředí na laku (PBR + clear-coat), obloha se sluncem, hvězdami a mraky, FXAA, vignetace / barevný grading, speed lines, voda s animací.
+- **Výkon:** cache statického prostředí (úpravy trati jsou okamžité), přeskakování spících těles, dynamické rozlišení, 3 úrovně kvality.
+- **Ovládání:** undo (Ctrl+Z), gamepad, pevná síla odpalu, slow-mo při nárazech, nastavení a nápověda (H).
+- **+10 vozidel:** Mini, kolo, motorka, letadlo, raketa, sáňky, traktor, autobus, tank, kancelářská židle (celkem 15).
+- **+10 map:** Schody, Mrakodrap, Most (voda), Skatepark, Kaňon, Stavba, Pláž (molo + moře), Cukrová země (pružná), Láva, Bowling (celkem 17). Nová překážka: trampolína.
+
 ## Novinky (v2)
 - **Mobil:** dotykové ovládání (tah = kamera, dva prsty = zoom + posun, tlačítka řízení, velké tlačítko odpalu), spodní panel se záložkami, přepínač kvality, celá obrazovka. Hraj na šířku.
 - **Vozidla:** auto, nákupní košík, motokára, dodávka, monster truck (každé má vlastní fyziku, deformaci a barvy).

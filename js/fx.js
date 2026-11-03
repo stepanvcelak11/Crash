@@ -23,6 +23,7 @@ class PSys {
         void main(){ float d = length(gl_PointCoord-.5)*2.; float a = sharp>.5 ? step(d,1.) : smoothstep(1.,.15,d);
           gl_FragColor = vec4(vC.rgb, vC.a*a); if(gl_FragColor.a<0.01) discard; }`,
     });
+    this.clock = 0; this.t1 = 0; this.cleared = true;
     this.pts = new THREE.Points(g, this.mat);
     this.pts.frustumCulled = false;
     scene.add(this.pts);
@@ -34,8 +35,12 @@ class PSys {
     this.life[i] = this.max[i] = life; this.s0[i] = s0; this.s1[i] = s1;
     for (let k = 0; k < 4; k++) { this.c0[i * 4 + k] = c0[k]; this.c1[i * 4 + k] = c1[k]; }
     this.grav[i] = grav; this.drag[i] = drag;
+    this.t1 = Math.max(this.t1, this.clock + life); this.cleared = false;
   }
   update(dt) {
+    this.clock += dt;
+    if (this.cleared) return;
+    if (this.clock > this.t1 + 0.05) this.cleared = true;      // everything has died: one last pass writes the zeros
     const sc = view.h / (2 * Math.tan(camera.fov * Math.PI / 360));
     this.mat.uniforms.scale.value = sc * renderScale();
     for (let i = 0; i < this.n; i++) {
@@ -52,7 +57,7 @@ class PSys {
     const g = this.pts.geometry;
     g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true; g.attributes.size.needsUpdate = true;
   }
-  clear() { this.life.fill(0); }
+  clear() { this.life.fill(0); this.cleared = false; this.t1 = 0; }
 }
 function renderScale() { return 1; }
 
@@ -115,6 +120,15 @@ function doFx(type, x, y, z, a, extra) {
       sfx('glass', 1);
       break;
     }
+    case 'splash': {
+      for (let i = 0; i < 46; i++) dust.spawn(x + R(1.2), y + 0.1, z + R(1.2), R(5 * a + 1), 3 + Math.random() * 7 * a, R(5 * a + 1), 0.9 + Math.random() * 0.8, 0.5, 1.2, [0.85, 0.95, 1, 0.9], [0.8, 0.9, 1, 0], 11, 0.6);
+      for (let i = 0; i < 18; i++) sparks.spawn(x + R(.6), y, z + R(.6), R(3), 4 + Math.random() * 5, R(3), 0.7, 0.08, 0.04, [0.6, 0.9, 1.6, 1], [0.4, 0.7, 1.2, 0], 12, 0.3);
+      sfx('splash', Math.min(1, a)); break;
+    }
+    case 'boing': {
+      for (let i = 0; i < 18; i++) sparks.spawn(x + R(.8), y, z + R(.8), R(4), 3 + Math.random() * 4, R(4), 0.5, 0.1, 0.02, [2.5, 0.6, 2.2, 1], [0.6, 2, 2.5, 0], 9, 0.3);
+      sfx('boing', 1); break;
+    }
     case 'debris': {
       for (let i = 0; i < Math.min(30, 8 + a); i++) dust.spawn(x + R(1.5), y + Math.random() * 1.5, z + R(.5), R(3), Math.random() * 3, R(3), 1.5 + Math.random(), 0.9, 3.2, [0.62, 0.6, 0.57, 0.7], [0.65, 0.63, 0.6, 0], -0.2, 1.3);
       sfx('crumble', 1);
@@ -172,6 +186,8 @@ function sfx(kind, vol) {
   if (kind === 'glass') { f.type = 'highpass'; fq = 3500; dur = 0.45; v = 0.35; }
   if (kind === 'crack') { f.type = 'bandpass'; fq = 1800; dur = 0.12; v = 0.8; }
   if (kind === 'crumble') { fq = 500; dur = 0.7; v = 0.5; }
+  if (kind === 'splash') { fq = 900; dur = 0.6; v = 0.5 * vol + 0.1; }
+  if (kind === 'boing') { beep(260, 0.18); beep(520, 0.12); return; }
   if (kind !== 'boom') f.frequency.value = fq;
   g.gain.setValueAtTime(v, now); g.gain.exponentialRampToValueAtTime(0.001, now + dur);
   src.connect(f); f.connect(g); g.connect(master); src.start(now); src.stop(now + dur + 0.05);

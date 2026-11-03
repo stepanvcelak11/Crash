@@ -27,15 +27,17 @@
     <div><span id="gSpeed">0</span><small>km/h</small></div>
     <div><span id="gDist">0</span><small>m</small></div>
     <div><span id="gTime">0.0</span><small>s</small></div>
+    <div class="bones"><span id="gBones">0</span><small>🦴</small></div>
   </div>
   <div id="airBadge">VE VZDUCHU <b id="airT">0.0</b>s</div>
   <div id="tools">
     <button id="bCam" title="Kamera (C)">📷 <span id="camName">Chase</span></button>
     <button id="bMute" title="Zvuk (M)">🔊</button>
     <button id="bFull" title="Celá obrazovka">⛶</button>
+    <button id="bRetryQ" title="Znovu (R)">↻</button>
     <button id="bPause" title="Pauza / Replay (P)">⏸ PAUZA / REPLAY</button>
   </div>
-  <div id="flash"></div>
+  <div id="flash"></div><div id="speedlines"></div>
   <div id="xrayFrame"><div class="xl">RENTGEN</div><div class="xb" id="xrayBone"></div></div>
   <div id="hint"></div>
 </div>
@@ -48,9 +50,10 @@
     <button data-tab="map">🗺<span>Mapa</span></button>
     <button data-tab="obs">🧱<span>Překážky</span></button>
     <button data-tab="path">✏<span>Trasa</span></button>
+    <button data-tab="set">⚙<span>Možnosti</span></button>
   </div>
   <div class="tabc" data-tab="veh">
-    <h3>Vozidlo</h3><div class="grid3" id="vehBtns"></div>
+    <h3>Vozidlo</h3><div class="grid4" id="vehBtns"></div>
     <h3>Barva</h3><div class="swatches" id="colBtns"></div>
     <label class="chk"><input type="checkbox" id="chkSteer"> Ruční řízení (A/D nebo tlačítka)</label>
   </div>
@@ -61,7 +64,7 @@
   <div class="tabc" data-tab="map">
     <h3>Mapa</h3><div class="grid3" id="mapBtns"></div>
     <p class="tip" id="mapDesc"></p>
-    <div class="row"><button id="bResetMap">↺ Výchozí rozložení</button><button id="bQual">Kvalita</button></div>
+    <div class="row"><button id="bResetMap">↺ Výchozí rozložení</button></div>
   </div>
   <div class="tabc" data-tab="obs">
     <h3>Překážky <small>(vyber a klepni na zem)</small></h3><div class="grid4" id="obsBtns"></div>
@@ -72,13 +75,26 @@
     <h3>Trasa vozidla</h3>
     <div class="row"><button id="bDraw">✏ Kreslit trasu</button><button id="bClearPath">🗑 Smazat</button></div>
     <div class="row"><button id="bTop">⬇ Pohled shora</button><button id="bBehind">🎥 Za vozidlem</button></div>
+    <div class="row"><button id="bUndoT">↶ Zpět (Ctrl+Z)</button></div>
     <p class="tip">Zapni kreslení a táhni po zemi. Začátek trasy = místo startu vozidla. Bez trasy jede rovně.</p>
+  </div>
+  <div class="tabc" data-tab="set">
+    <h3>Grafika</h3>
+    <div class="seg" id="qualBtns"><button data-q="high">Vysoká</button><button data-q="med">Střední</button><button data-q="low">Nízká</button></div>
+    <label class="chk"><input type="checkbox" id="chkAuto"> Automatické rozlišení (plynulost)</label>
+    <label class="chk"><input type="checkbox" id="chkBloom"> Záře (bloom)</label>
+    <label class="chk"><input type="checkbox" id="chkBlur"> Rozmazání rychlostí</label>
+    <label class="chk"><input type="checkbox" id="chkShake"> Otřesy kamery</label>
+    <label class="chk"><input type="checkbox" id="chkSlow"> Slow-mo při nárazech</label>
+    <h3>Odpal</h3>
+    <label class="rng">Pevná síla: <b id="powVal">měřič</b><input type="range" id="powRange" min="0" max="100" step="5" value="0"></label>
+    <div class="row"><button id="bHelp">❓ Ovládání</button></div>
   </div>
 </div>
 <div id="objBar">
   <span id="objName"></span>
   <button data-a="rl">⟲</button><button data-a="rr">⟳</button><button data-a="sm">−</button><button data-a="sp">+</button>
-  <button data-a="up">⬆</button><button data-a="dn">⬇</button><button data-a="dup">⧉</button><button data-a="del">🗑</button>
+  <button data-a="up">⬆</button><button data-a="dn">⬇</button><button data-a="dup">⧉</button><button data-a="undo">↶</button><button data-a="del">🗑</button>
 </div>
 <div id="touchCtl"><button id="tcL">◀</button><button id="tcR">▶</button></div>
 
@@ -114,6 +130,18 @@
   </div>
 </div>
 
+<div id="help" class="panel"><h2>Ovládání</h2>
+  <table>
+    <tr><td>Mezerník (držet / pustit)</td><td>nabít a odpálit • za jízdy vyhodit figurínu</td></tr>
+    <tr><td>A / D, ← →</td><td>řízení (tlačítka ◀ ▶ na mobilu)</td></tr>
+    <tr><td>C / 1–4</td><td>kamera Chase • POV • Fly-by • Free</td></tr>
+    <tr><td>P</td><td>pauza + replay (slow-mo 0.1×–1×)</td></tr>
+    <tr><td>R</td><td>okamžitý restart</td></tr>
+    <tr><td>Ctrl+Z / Del</td><td>zpět / smazat vybranou překážku</td></tr>
+    <tr><td>W A S D (editor)</td><td>posun kamery • tah = otáčení • kolečko = zoom • pravé tl. = posun</td></tr>
+    <tr><td>Dva prsty</td><td>zoom a posun (mobil)</td></tr>
+    <tr><td>Gamepad</td><td>A = odpal/vyhodit • páčka = řízení • Y = restart • RB = kamera • Start = pauza</td></tr>
+  </table><button id="bHelpClose" class="primary">Zavřít</button></div>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

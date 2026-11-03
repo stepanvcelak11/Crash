@@ -1,18 +1,21 @@
 // Generic raycast vehicle (car, cart, kart, van, monster truck) with vertex soft-body deformation,
 // detachable parts and shattering glass. Everything is driven by a spec from vehicles.js.
-import { THREE, CANNON, GROUP, ALL, M, S, world, addEntity, mat, activateEntity, disposers } from './engine.js';
+import { THREE, CANNON, GROUP, ALL, M, S, world, addEntity, mat, paint, activateEntity, disposers } from './engine.js';
 import { fx } from './fx.js';
 
 const P = (x, y, z) => new THREE.Vector3(x, y, z);
+const _rv = new CANNON.Vec3();
 const hash = i => { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 
 export class Car {
-  constructor(spec, x, z, yaw = 0, color = null) {
+  constructor(spec, x, z, yaw = 0, color = null, y0 = 0, pitch = 0) {
     this.spec = spec;
     const body = new CANNON.Body({ mass: spec.mass, material: M.car, linearDamping: 0.01, angularDamping: 0.25 });
     for (const s of spec.shapes) body.addShape(new CANNON.Box(new CANNON.Vec3(...s.h)), new CANNON.Vec3(...s.o));
-    body.position.set(x, spec.rideY, z);
-    body.quaternion.setFromEuler(0, yaw, 0);
+    body.position.set(x, y0 + spec.rideY, z);
+    const q0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitch));
+    body.quaternion.set(q0.x, q0.y, q0.z, q0.w);
+    this.y0 = y0; this.launchT = 0; this.power = 1;
     body.collisionFilterGroup = GROUP.CAR; body.collisionFilterMask = ALL;
     body.allowSleep = false;
     this.body = body;
@@ -25,7 +28,11 @@ export class Car {
       dampingRelaxation: w.damp[0], dampingCompression: w.damp[1], frictionSlip: w.slip, rollInfluence: w.roll,
       useCustomSlidingRotationalSpeed: true, customSlidingRotationalSpeed: -30,
     };
-    for (const p of w.pts) this.vehicle.addWheel(Object.assign({}, wopt, { chassisConnectionPointLocal: new CANNON.Vec3(...p) }));
+    this.rs = w.rs || [w.r, w.r, w.r, w.r];
+    w.pts.forEach((p, i) => {
+      const py = w.rs ? w.rest + this.rs[i] - spec.rideY : p[1];   // per-wheel radius: keep every wheel touching the ground
+      this.vehicle.addWheel(Object.assign({}, wopt, { radius: this.rs[i], chassisConnectionPointLocal: new CANNON.Vec3(p[0], py, p[2]) }));
+    });
     this.vehicle.addToWorld(world);
     disposers.push(() => this.vehicle.removeFromWorld(world));
     this.slipMul = 1;
@@ -34,7 +41,7 @@ export class Car {
     this.group = new THREE.Group();
     const col = color ?? spec.color;
     const mats = {
-      body: mat(col, { roughness: 0.45, metalness: 0.35, vertexColors: true }),
+      body: paint(col, { vertexColors: true }),
       trim: mat(0x222226, { roughness: 0.6, vertexColors: true }),
       dark: mat(0x2b2b30, { roughness: 0.7, vertexColors: true }),
       wire: mat(0xc9d1da, { roughness: 0.45, metalness: 0.5, vertexColors: true, wireframe: true, flatShading: false }),
@@ -69,15 +76,15 @@ export class Car {
     // ---- wheels: visual entities driven by the raycast vehicle + dormant free wheels ----
     this.wheels = [];
     const tireMat = mat(0x151515, { roughness: 0.9 }), hubMat = mat(0xb8bcc4, { metalness: 0.7, roughness: 0.3 });
-    const mkTire = () => { const t = new THREE.Mesh(new THREE.CylinderGeometry(w.r, w.r, w.w, w.r > 0.5 ? 18 : 14), tireMat); t.rotation.z = Math.PI / 2; t.castShadow = true; return t; };
+    const mkTire = r => { const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w.w, r > 0.5 ? 20 : 14), tireMat); t.rotation.z = Math.PI / 2; t.castShadow = true; return t; };
     for (let i = 0; i < 4; i++) {
-      const g = new THREE.Group(); g.add(mkTire());
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(w.r * 0.5, w.r * 0.5, w.w + 0.02, 6), hubMat); hub.rotation.z = Math.PI / 2; g.add(hub);
+      const g = new THREE.Group(); g.add(mkTire(this.rs[i]));
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(this.rs[i] * 0.5, this.rs[i] * 0.5, w.w + 0.02, 6), hubMat); hub.rotation.z = Math.PI / 2; g.add(hub);
       const proxy = { position: new CANNON.Vec3(), quaternion: new CANNON.Quaternion() };
       const ent = addEntity(proxy, g, { kind: 'wheel', noWorld: true }); ent.noWorld = true; ent.inWorld = false;
-      const fb = new CANNON.Body({ mass: Math.max(4, spec.mass / 36), material: M.debris, shape: new CANNON.Box(new CANNON.Vec3(w.w / 2, w.r * 0.95, w.r * 0.95)) });
+      const fb = new CANNON.Body({ mass: Math.max(4, spec.mass / 36), material: M.debris, shape: new CANNON.Box(new CANNON.Vec3(w.w / 2, this.rs[i] * 0.95, this.rs[i] * 0.95)) });
       fb.collisionFilterGroup = GROUP.DEBRIS; fb.collisionFilterMask = ALL & ~GROUP.CAR;
-      const fg = new THREE.Group(); fg.add(mkTire()); fg.visible = false;
+      const fg = new THREE.Group(); fg.add(mkTire(this.rs[i])); fg.visible = false;
       const fent = addEntity(fb, fg, { kind: 'freewheel', dormant: true });
       this.wheels.push({ ent, proxy, free: fent, off: false, offFrame: Infinity });
     }
@@ -96,38 +103,90 @@ export class Car {
     this.crashed = false; this.burning = false; this.slick = false;
     this.dummy = null; this.onDamage = null; this.hitCool = 0;
     body.addEventListener('collide', e => this.onCollide(e));
+    this.contacts = [false, false, false, false];
     this.syncWheels();
   }
 
   get forward() { const f = new CANNON.Vec3(0, 0, -1); this.body.quaternion.vmult(f, f); return f; }
   get speed() { return this.body.velocity.length(); }
   get fwdSpeed() { return this.body.velocity.dot(this.forward); }
-  get airborne() { return this.vehicle.wheelInfos.every(w => !w.isInContact) && this.body.position.y > this.spec.rideY + 0.7; }
+  get grounded() { return this.contacts.some(Boolean); }
+  get airborne() { return !this.grounded && this.body.position.y > this.y0 + this.spec.rideY + 0.7; }
 
   syncWheels() {
     for (let i = 0; i < 4; i++) {
+      this.contacts[i] = this.vehicle.wheelInfos[i].isInContact;      // updateWheelTransform() resets the flag, so read it first
       this.vehicle.updateWheelTransform(i);
       const t = this.vehicle.wheelInfos[i].worldTransform, w = this.wheels[i];
       w.proxy.position.copy(t.position); w.proxy.quaternion.copy(t.quaternion);
-      w.ent.mesh.position.set(t.position.x, t.position.y, t.position.z);
+      if (this.spec.wheels.center) {      // outrigger physics wheels, drawn on the centre line (bikes)
+        const sh = this.spec.wheels.pts[i][0], q = this.body.quaternion; _rv.set(1, 0, 0); q.vmult(_rv, _rv);
+        w.proxy.position.x -= _rv.x * sh; w.proxy.position.y -= _rv.y * sh; w.proxy.position.z -= _rv.z * sh;
+      }
+      w.ent.mesh.position.set(w.proxy.position.x, w.proxy.position.y, w.proxy.position.z);
       w.ent.mesh.quaternion.set(t.quaternion.x, t.quaternion.y, t.quaternion.z, t.quaternion.w);
     }
   }
 
   step(dt) {
-    const v = this.vehicle, b = this.body, sp = this.spec, m = sp.mass;
+    const v = this.vehicle, b = this.body, sp = this.spec, m = sp.mass, fl = sp.fly;
     const slip = this.slick ? 0.45 * Math.min(1, this.slipMul * 2) : sp.wheels.slip * this.slipMul;
-    for (let i = 0; i < 4; i++) v.wheelInfos[i].frictionSlip = slip;
+    const load = 1;      // springs must also carry the rider's weight
+    for (let i = 0; i < 4; i++) { const wi = v.wheelInfos[i]; wi.frictionSlip = slip; wi.suspensionStiffness = Math.min(sp.wheels.stiff * load, Math.max(sp.wheels.stiff, 75)); wi.dampingCompression = sp.wheels.damp[1] * Math.sqrt(load); wi.dampingRelaxation = sp.wheels.damp[0] * Math.sqrt(load); wi.maxSuspensionForce = 1e5 * (m / 900) * load; }
     let steer = 0;
     if (this.engineOn && !this.crashed) {
-      const err = this.target - this.fwdSpeed;
-      const f = Math.max(-2.8 * m, Math.min(12.2 * m * sp.accel, err * 0.78 * m * sp.accel));
-      for (let i = 0; i < 4; i++) v.applyEngineForce(this.wheels[i].off ? 0 : f / 4, i);
+      if (!fl) {
+        const err = this.target - this.fwdSpeed;
+        const f = Math.max(-2.8 * m, Math.min(12.2 * m * sp.accel, err * 0.78 * m * sp.accel));
+        for (let i = 0; i < 4; i++) v.applyEngineForce(this.wheels[i].off ? 0 : f / 4, i);
+      } else for (let i = 0; i < 4; i++) v.applyEngineForce(0, i);
       steer = this.steerInput * sp.steer / (1 + this.speed * 0.045);
     } else for (let i = 0; i < 4; i++) v.applyEngineForce(0, i);
     v.setSteeringValue(steer, 0); v.setSteeringValue(steer, 1);
-    if (v.wheelInfos.some(w => w.isInContact)) { const s = this.speed; b.applyForce(new CANNON.Vec3(0, -0.0024 * m * s * s, 0)); }
+    const grounded = this.grounded;
+    if (grounded && !fl) { const s = this.speed; b.applyForce(new CANNON.Vec3(0, -0.0024 * m * s * s, 0)); }
+    if (fl && this.engineOn) this.flight(dt);
+    if (sp.upright && grounded) this.upright(dt);
     this.hitCool -= dt;
+  }
+
+  /** plane / rocket aerodynamics (simple, arcade) */
+  flight(dt) {
+    const b = this.body, sp = this.spec, fl = sp.fly, m = sp.mass, g = Math.abs(world.gravity.y);
+    const q = b.quaternion, f = this.forward, up = new CANNON.Vec3(0, 1, 0); q.vmult(up, up);
+    const right = f.cross(up), wv = b.angularVelocity, vf = this.fwdSpeed;
+    const wr = wv.dot(right), wf = wv.dot(f);
+    if (fl.type === 'plane') {
+      const thrust = Math.max(-m, Math.min(6 * m, (this.target - vf) * 0.9 * m));
+      b.applyForce(f.scale(thrust));
+      const lk = Math.max(0, vf / fl.takeoff);
+      if (lk > 0.75) b.applyForce(up.scale(Math.min(lk * lk, 1.7) * g * m));
+      const pitch = Math.asin(Math.max(-1, Math.min(1, f.y)));
+      const des = vf > fl.takeoff ? (b.position.y - this.y0 < 38 ? 0.17 : 0.0) : 0;
+      const tp = m * (10 * (des - pitch) - 6 * wr) * (lk > 0.5 ? 1 : 0.1);
+      const bank = this.steerInput * 0.45, tr = m * (10 * (right.y - bank) - 6 * wf) * (lk > 0.6 ? 1 : 0);
+      b.torque.x += right.x * tp + f.x * tr + up.x * m * this.steerInput * 2.5 * Math.min(1, lk);
+      b.torque.y += right.y * tp + f.y * tr + up.y * m * this.steerInput * 2.5 * Math.min(1, lk);
+      b.torque.z += right.z * tp + f.z * tr + up.z * m * this.steerInput * 2.5 * Math.min(1, lk);
+    } else if (fl.type === 'rocket') {
+      const t = S.time - this.launchT;
+      if (t < fl.burn) b.applyForce(f.scale(fl.thrust * g * m * (0.55 + 0.45 * this.power)));
+      const v = b.velocity, s2 = v.length();
+      if (s2 > 12) {
+        const vd = v.scale(1 / s2), cr = f.cross(vd);
+        b.torque.x += cr.x * m * 10 - wv.x * m * 5; b.torque.y += cr.y * m * 10 - wv.y * m * 5; b.torque.z += cr.z * m * 10 - wv.z * m * 5;
+      }
+      b.torque.x += up.x * m * this.steerInput * 3; b.torque.y += up.y * m * this.steerInput * 3; b.torque.z += up.z * m * this.steerInput * 3;
+    }
+  }
+
+  /** self-balancing for bikes: velocity-level roll controller (stable at any inertia) */
+  upright(dt) {
+    const b = this.body, f = this.forward, up = new CANNON.Vec3(0, 1, 0); b.quaternion.vmult(up, up);
+    const right = f.cross(up), wf = b.angularVelocity.dot(f), k = this.spec.upright, kd = 1.4 * Math.sqrt(k);
+    const dw = dt * (k * right.y - kd * wf);
+    b.angularVelocity.x += f.x * dw; b.angularVelocity.y += f.y * dw; b.angularVelocity.z += f.z * dw;
+    if (this.dummy && this.dummy.attached) for (const bn of this.dummy.list) { const w = bn.body.angularVelocity; w.x += f.x * dw; w.y += f.y * dw; w.z += f.z * dw; }
   }
 
   onCollide(e) {

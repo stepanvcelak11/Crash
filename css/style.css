@@ -118,3 +118,20 @@ button.primary { background: var(--acc); color: #111; font-weight: 800; border-c
 @media (orientation: portrait) and (pointer: coarse) {
   #hint::after { content: "  📱 Otoč telefon na šířku pro lepší výhled"; display: block; color: var(--acc); }
 }
+
+/* ===== v3 ===== */
+.seg { display: flex; gap: 6px; margin-bottom: 8px; } .seg button { flex: 1; padding: 8px 4px; font-size: 13px; }
+.rng { display: block; font-size: 13px; margin: 6px 0; } .rng input { width: 100%; accent-color: var(--acc); margin-top: 6px; }
+#speedlines { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.0) 0deg 3deg, rgba(255,255,255,.35) 3.4deg 3.8deg, rgba(255,255,255,0) 4.2deg 9deg); -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 38%, #000 82%); mask-image: radial-gradient(circle at 50% 50%, transparent 38%, #000 82%); mix-blend-mode: screen; }
+.bones span { color: #ff8a8a; }
+#help { display: none; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, 94vw); z-index: 30; max-height: 92vh; overflow: auto; }
+#help h2 { margin: 0 0 8px; color: var(--acc); } #help table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 12px; } #help td { padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,.1); } #help td:first-child { color: var(--acc2); white-space: nowrap; font-weight: 700; }
+#vehBtns button .ic, #mapBtns button .ic { font-size: 22px; }
+button { transition: transform .08s, background .12s; } button:active { transform: scale(.96); }
+.panel { box-shadow: 0 10px 40px rgba(0,0,0,.45); background: linear-gradient(180deg, rgba(22,28,42,.9), rgba(10,14,22,.88)); }
+#setup { scrollbar-width: thin; }
+.tabc button.on { box-shadow: 0 0 0 2px #fff4, 0 4px 14px rgba(255,192,42,.35); }
+#tabs button.on { background: var(--acc); color: #111; }
+#bLaunch { background: linear-gradient(180deg, #ffd24a, #ffb00f); }
+#hud #tools button { background: rgba(10,14,22,.6); backdrop-filter: blur(4px); }
+@media (pointer: coarse), (max-width: 820px) { #bRetryQ { font-size: 16px; } .grid4 { grid-template-columns: repeat(4, 1fr); } .grid4 button { font-size: 10px; padding: 4px 1px; } }

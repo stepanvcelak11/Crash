@@ -6,13 +6,6 @@
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <title>Turbo Crash – 3D Dismount Physics</title>
 <link rel="stylesheet" href="css/style.css">
-<script type="importmap">
-{ "imports": {
-  "three": "./vendor/three.module.min.js",
-  "three/addons/": "./vendor/addons/",
-  "cannon-es": "./vendor/cannon-es.js"
-} }
-</script>
 </head>
 <body>
 <div id="game"></div>
@@ -142,6 +135,14 @@
     <tr><td>Dva prsty</td><td>zoom a posun (mobil)</td></tr>
     <tr><td>Gamepad</td><td>A = odpal/vyhodit • páčka = řízení • Y = restart • RB = kamera • Start = pauza</td></tr>
   </table><button id="bHelpClose" class="primary">Zavřít</button></div>
-<script type="module" src="js/main.js"></script>
+<script>
+// cache-busting: every JS module / CSS is requested with the build version, so a new deploy is never served from stale cache
+(function(){var V="1793708652",B=new URL('.',location.href).href,m={"three":B+"vendor/three.module.min.js?v=0","three/addons/":B+"vendor/addons/","cannon-es":B+"vendor/cannon-es.js?v=0"};
+['engine.js', 'env.js', 'fx.js', 'main.js', 'maps.js', 'ragdoll.js', 'replay.js', 'track.js', 'vehicle.js', 'vehicles.js'].forEach(function(f){m[B+"js/"+f]=B+"js/"+f+"?v="+V;});
+var s=document.createElement('script');s.type='importmap';s.textContent=JSON.stringify({imports:m});document.head.appendChild(s);
+var l=document.querySelector('link[rel=stylesheet]');l.href=l.getAttribute('href')+'?v='+V;
+var j=document.createElement('script');j.type='module';j.src=B+'js/main.js?v='+V;document.body.appendChild(j);})();
+</script>
+
 </body>
 </html>

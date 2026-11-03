@@ -24,7 +24,7 @@ const GROUND_TEX = {
   canyon: () => canvasTex('canyon', 256, 256, (g, w, h) => { chk(g, w, h, '#b8643a', '#c3703f'); noise(g, w, h, 2000, 110, 90, 3, [40, 0, -30]); }, [140, 160]),
   dirt: () => canvasTex('dirt', 256, 256, (g, w, h) => { chk(g, w, h, '#8a6a46', '#94724c'); noise(g, w, h, 2400, 90, 80, 3, [30, 10, -10]); }, [140, 160]),
   candy: () => canvasTex('candy', 256, 256, (g, w, h) => { chk(g, w, h, '#ffb8dc', '#b8ffe6'); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 3; g.strokeRect(0, 0, w, h); }, [140, 160]),
-  basalt: () => canvasTex('basalt', 256, 256, (g, w, h) => { g.fillStyle = '#2b2624'; g.fillRect(0, 0, w, h); noise(g, w, h, 2500, 30, 50, 3, [10, 0, 0]); const R = rng(4); g.strokeStyle = 'rgba(255,90,20,.35)'; g.lineWidth = 2; for (let i = 0; i < 7; i++) { g.beginPath(); g.moveTo(R() * w, R() * h); g.lineTo(R() * w, R() * h); g.stroke(); } }, [90, 100]),
+  basalt: () => canvasTex('basalt', 256, 256, (g, w, h) => { g.fillStyle = '#3d3532'; g.fillRect(0, 0, w, h); noise(g, w, h, 2500, 50, 60, 3, [14, 2, 0]); const R = rng(4); g.strokeStyle = 'rgba(255,90,20,.35)'; g.lineWidth = 2; for (let i = 0; i < 7; i++) { g.beginPath(); g.moveTo(R() * w, R() * h); g.lineTo(R() * w, R() * h); g.stroke(); } }, [90, 100]),
   wood: () => canvasTex('wood', 256, 256, (g, w, h) => { g.fillStyle = '#c89a62'; g.fillRect(0, 0, w, h); const R = rng(8); for (let i = 0; i < 12; i++) { g.fillStyle = `rgba(${90 + R() * 40},${50 + R() * 30},20,.28)`; g.fillRect(i * w / 12, 0, w / 12 - 2, h); } noise(g, w, h, 800, 120, 40, 2, [30, 10, -30]); }, [8, 60]),
 };
 export const roadTex = neon => canvasTex(neon ? 'roadN' : 'road', 256, 512, (g, w, h) => {
@@ -227,7 +227,7 @@ export class Env {
     const R = this.R, cm = new THREE.MeshStandardMaterial({ map: concreteTex(), roughness: 0.9, flatShading: true });
     const cols = [0xff5a3c, 0x3cb4ff, 0xffd23c]; let i = 0;
     for (const [x, z, hx, hz, h] of [[-30, 20, 6, 6, 1.4], [30, -10, 8, 5, 1.0], [-28, -35, 5, 8, 1.8], [28, 28, 6, 4, 0.8]]) this.box(hx, h / 2, hz, x, h / 2, z, cm);
-    for (const [x, z, len, ang] of [[0, -20, 14, 0], [-15, 5, 12, 1.57], [18, -38, 10, 0.4]]) { this.box(len / 2, 0.15, 0.15, x, 0.7, z, mat(cols[i++ % 3], { metalness: 0.7 }), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ang)); for (const s of [-1, 1]) this.box(0.12, 0.35, 0.12, x + Math.cos(ang) * s * len / 2.3, 0.35, z - Math.sin(ang) * s * len / 2.3, mat(0x555a60)); }
+    for (const [x, z, len, ang] of [[-22, -20, 14, 0], [-15, 5, 12, 1.57], [22, -38, 10, 0.4]]) { this.box(len / 2, 0.15, 0.15, x, 0.7, z, mat(cols[i++ % 3], { metalness: 0.7 }), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ang)); for (const s of [-1, 1]) this.box(0.12, 0.35, 0.12, x + Math.cos(ang) * s * len / 2.3, 0.35, z - Math.sin(ang) * s * len / 2.3, mat(0x555a60)); }
     // colourful wall stripes
     for (const [x, z, rot] of [[0, 59.1, 0], [0, -59.1, 0]]) { const st = new THREE.Mesh(new THREE.PlaneGeometry(116, 3), new THREE.MeshBasicMaterial({ color: cols[(R() * 3) | 0] })); st.position.set(x, 5, z); st.rotation.y = rot; this.group.add(st); }
   }

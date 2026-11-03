@@ -97,7 +97,7 @@ Object.assign(MAPS, {
   },
   lava: {
     name: 'Láva', icon: '🌋', desc: 'Sopky a řeka lávy. Nespadni!',
-    sky: [0x1a0606, 0x4a1608, 0x8a2a0c], fog: [0x3a1208, 0.0042], hemi: [0xff9a60, 0x2a1008, 0.8], sun: [0xff8a50, 1.8], sunDir: [-0.3, 0.3, 0.5], env: 0.3, clouds: 0.5, cloudCol: 0x5a2a1c, stars: 0.3,
+    sky: [0x1a0606, 0x4a1608, 0x8a2a0c], fog: [0x3a1208, 0.0042], hemi: [0xffb080, 0x4a2010, 1.5], sun: [0xff9a60, 2.6], sunDir: [-0.3, 0.3, 0.5], env: 0.3, clouds: 0.5, cloudCol: 0x5a2a1c, stars: 0.3,
     ground: 'basalt', road: false, decor: 'volcano', gravity: -11, start: [0, 20], pit: { z0: -150, z1: -250, depth: 10 }, lavaPit: true, rock: 0x2a2220, killY: -8,
     defaults: [O('boost', 0, -60), O('ramp', 0, -100, 0, 1.5)],
   },

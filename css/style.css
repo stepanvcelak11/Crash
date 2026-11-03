@@ -135,3 +135,65 @@ button { transition: transform .08s, background .12s; } button:active { transfor
 #bLaunch { background: linear-gradient(180deg, #ffd24a, #ffb00f); }
 #hud #tools button { background: rgba(10,14,22,.6); backdrop-filter: blur(4px); }
 @media (pointer: coarse), (max-width: 820px) { #bRetryQ { font-size: 16px; } .grid4 { grid-template-columns: repeat(4, 1fr); } .grid4 button { font-size: 10px; padding: 4px 1px; } }
+
+/* ===== v4: icons, calmer mobile layout ===== */
+.svg { width: 1.35em; height: 1.35em; display: inline-block; vertical-align: -0.28em; flex: none; }
+.svg.wide { width: 2.7em; height: 1.8em; }
+.svg .f { fill: currentColor; fill-opacity: .22; }
+.svg.thumb { width: 100%; height: auto; border-radius: 6px; display: block; margin-bottom: 3px; }
+i[data-i] { font-style: normal; display: inline-flex; }
+button > i[data-i] + span, button > i[data-i] + * { margin-left: 0; }
+button:has(> i[data-i]) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+#tabs button { flex-direction: column; gap: 2px; font-size: 22px; }
+#tabs button .svg { width: 24px; height: 24px; }
+.grid4 button, .grid3 button, .grid2 button { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.15; }
+.ic { color: var(--acc2); display: flex; justify-content: center; font-size: 15px; }
+button.on .ic { color: #111; }
+.grid3 .ic .svg:not(.wide), .grid4 .ic .svg:not(.wide) { width: 26px; height: 26px; }
+#vehBtns button { padding: 6px 2px; }
+#mapBtns button { padding: 4px; } #mapBtns .thumb { height: 42px; object-fit: cover; }
+#objBar button .svg, #touchCtl .svg, #hud #tools .svg { width: 22px; height: 22px; }
+#touchCtl .svg { width: 40px; height: 40px; }
+#hud #tools button { display: inline-flex; gap: 6px; align-items: center; min-height: 40px; }
+.sw { width: 34px; height: 34px; }
+#setup, .tabc, #help, #result { touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+#setup .tabc { overflow-y: auto; }
+#sheetClose { display: none; }
+.tabc button { min-height: 40px; }
+#hint { background: rgba(10,14,22,.55); border-radius: 12px; padding: 4px 12px; }
+#hint:empty { display: none; }
+#hint::after { content: none !important; }
+
+@media (pointer: coarse), (max-width: 820px) {
+  #setup { max-height: 56vh; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  #setup .tabc { max-height: calc(56vh - 84px); }
+  #tabs button { padding: 6px 0 4px; }
+  #tabs button span { font-size: 11px; }
+  #launch { bottom: calc(var(--sheetH) + 12px); }
+  #hint { bottom: calc(var(--sheetH) + 76px); font-size: 13px; }
+  #hud #tools { gap: 6px; }
+  #hud #tools button { min-width: 40px; padding: 6px 9px; }
+  #hud #tools button span { display: none; }
+  #objBar { top: 56px; }
+  #objBar button { min-width: 42px; min-height: 42px; }
+  #touchCtl { bottom: 16px; padding: 0 16px; }
+  #touchCtl button { width: 84px; height: 84px; }
+  body[data-mode="running"] #launch { bottom: 26px; width: min(240px, calc(100vw - 230px)); }
+  body[data-mode="running"] #bLaunch { padding: 14px 8px; font-size: 14px; }
+  body[data-mode="running"] #hint { display: none; }
+}
+@media (pointer: coarse) and (orientation: landscape), (max-height: 480px) and (orientation: landscape) {
+  #setup { left: 8px; right: auto; top: auto; bottom: 8px; width: min(52vw, 340px); border-radius: 14px; max-height: calc(100vh - 16px); }
+  #setup .tabc { max-height: calc(100vh - 108px); }
+  #launch { left: auto; right: 12px; bottom: 12px; transform: none; width: min(300px, 38vw); }
+  #hint { bottom: 12px; left: calc(min(52vw, 340px) + 40px); transform: none; width: auto; max-width: 30vw; font-size: 12px; }
+  #objBar { top: 8px; }
+  #scoreBox { top: 2px; } #score { font-size: 26px; }
+  body[data-mode="running"] #launch { right: auto; left: 50%; transform: translateX(-50%); bottom: 18px; width: min(240px, calc(100vw - 260px)); }
+  #touchCtl button { width: 76px; height: 76px; }
+  #result { max-height: 98vh; }
+  #heat { width: 120px; height: 200px; }
+}
+@media (hover: hover) and (pointer: fine) and (min-width: 821px) {
+  #sheetClose { display: none; }
+}

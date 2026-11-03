@@ -1,4 +1,5 @@
 // Game flow: setup (vehicle / map / obstacles / drawn route) -> launch (power meter) -> run -> results / replay.
+import { icon, mapThumb } from './icons.js';
 import {
   THREE, CANNON, S, IS_TOUCH, renderer, scene, camera, composer, bloomPass, blurPass, view, world, sun, sunOffset, entities,
   clearLevel, syncEntities, applyEnv, setQuality, QUAL, shadowTick, adaptRes, updateClouds, gradePass, fxaaPass,
@@ -175,7 +176,7 @@ function startLaunch() {
 function releaseLaunch() {
   if (S.mode !== 'launching') return;
   $('meter').style.display = 'none'; $('bLaunch').classList.remove('held');
-  doLaunch(Math.max(0.08, S.power));
+  doLaunch(Math.max(0.35, S.power));
 }
 function doLaunch(p) {
   S.mode = 'running'; S.time = 0; if (S.cam === 'free') S.cam = 'chase'; camMode();
@@ -186,7 +187,7 @@ function doLaunch(p) {
     const sp = car.spec;
     baseTarget = sp.speed[0] + p * (sp.speed[1] - sp.speed[0]);
     car.target = baseTarget; car.engineOn = true; car.power = p; car.launchT = 0;
-    const f = car.forward, v0 = baseTarget * (sp.fly && sp.fly.type === 'rocket' ? 0.15 : 0.6);
+    const f = car.forward, v0 = baseTarget * (sp.fly && sp.fly.type === 'rocket' ? 0.15 : 0.4);
     car.body.velocity.set(f.x * v0, f.y * v0, f.z * v0);
     dummy.attachTo(car.body);
     for (const b of dummy.list) b.body.velocity.copy(car.body.velocity);
@@ -215,7 +216,10 @@ function physicsStep(h) {
   if (car) {
     const th = autopilot();
     let st = 0;
-    if (th !== null) { st = clamp(th * 1.8, -1, 1); const L = 5 + car.speed * 0.35, kap = 2 * Math.abs(Math.sin(th)) / L; car.target = Math.max(7, Math.min(baseTarget, Math.sqrt(9 / Math.max(kap, 1e-3)))); }
+    // the vehicle keeps accelerating after launch (up to ~1.35x the launch speed, capped) so every run builds speed
+    const topT = Math.max(baseTarget, Math.min(85, baseTarget * 1.35)), rampT = baseTarget + (topT - baseTarget) * Math.min(1, S.time / 6);
+    car.target = rampT;
+    if (th !== null) { st = clamp(th * 1.8, -1, 1); const L = 5 + car.speed * 0.35, kap = 2 * Math.abs(Math.sin(th)) / L; car.target = Math.max(7, Math.min(rampT, Math.sqrt(9 / Math.max(kap, 1e-3)))); }
     if (S.steer) st = clamp(st + steerAxis, -1, 1);
     car.steerInput = st;
     car.step(h);
@@ -535,7 +539,7 @@ function setUIMode() {
   } else if (m === 'setup') {
     bl.className = ''; bl.style.visibility = 'visible';
     bl.innerHTML = IS_TOUCH ? 'PODRŽ = NABÍJEJ • PUSŤ = ODPAL' : 'PODRŽ = NABÍJEJ &nbsp;•&nbsp; PUSŤ = ODPAL <small>(MEZERNÍK)</small>';
-    $('hint').textContent = S.tool === 'path' ? 'Táhni prstem / myší po zemi – nakresli trasu (začátek = start vozidla)' : (S.tool ? 'Klepni na zem pro umístění překážky' : 'Klepni na překážku pro úpravu • tah = kamera • dva prsty = zoom + posun');
+    $('hint').textContent = S.tool === 'path' ? (IS_TOUCH ? 'Táhni prstem po zemi a nakresli trasu' : 'Táhni myší po zemi – nakresli trasu (začátek = start vozidla)') : (S.tool ? 'Klepni na zem – umístíš překážku' : (IS_TOUCH ? '' : 'Klepni na překážku pro úpravu • tah = kamera • dva prsty = zoom + posun'));
   } else $('hint').textContent = m === 'ended' ? (IS_TOUCH ? '' : 'R = znovu • tahem myši otáčíš kamerou') : '';
   $('replayBar').style.display = m === 'replay' ? 'flex' : 'none';
   $('gauges').style.display = m === 'setup' ? 'none' : 'flex';
@@ -557,6 +561,7 @@ function applyTabs() {
   refreshSheetH();
 }
 document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => openTab(b.dataset.tab)));
+$('sheetClose').onclick = () => { S.sheetOpen = false; applyTabs(); };
 
 function mkBtns(host, items, cur, cb, fmt) {
   host.innerHTML = '';
@@ -567,25 +572,25 @@ function mkBtns(host, items, cur, cb, fmt) {
     host.appendChild(b);
   });
 }
-mkBtns($('vehBtns'), VEHICLE_LIST.map(([k, v]) => [k, v.name]), () => S.vehicle, k => { S.vehicle = k; S.color = null; saveState(); build(); }, (k, l) => `<div class="ic">${VEHICLES[k].icon}</div>${l}`);
+mkBtns($('vehBtns'), VEHICLE_LIST.map(([k, v]) => [k, v.name]), () => S.vehicle, k => { S.vehicle = k; S.color = null; saveState(); build(); }, (k, l) => `<div class="ic">${icon(k)}</div><span>${l}</span>`);
 {
   const host = $('colBtns'); host.innerHTML = '';
   COLORS.forEach(c => { const b = document.createElement('button'); b.className = 'sw'; b.style.background = '#' + c.toString(16).padStart(6, '0'); b.onclick = () => { S.color = c; saveState(); build(); }; host.appendChild(b); });
 }
-mkBtns($('poseBtns'), Object.entries(POSES).filter(([k]) => k !== 'tpose').map(([k, v]) => [k, v.label]), () => S.pose, k => { S.pose = k; saveState(); build(); });
+mkBtns($('poseBtns'), Object.entries(POSES).filter(([k]) => k !== 'tpose').map(([k, v]) => [k, v.label]), () => S.pose, k => { S.pose = k; saveState(); build(); }, (k, l) => `<div class="ic">${icon(k)}</div><span>${l}</span>`);
 mkBtns($('placeBtns'), [['inside', 'Uvnitř'], ['roof', 'Na střeše'], ['hood', 'Na kapotě'], ['road', 'Bez vozidla']], () => S.place, k => { S.place = k; saveState(); build(); });
-mkBtns($('mapBtns'), MAP_LIST.map(([k, v]) => [k, v.name]), () => S.map, k => { saveState(); S.map = k; loadLayout(); saveState(); build({ cam: true }); $('mapDesc').textContent = MAPS[k].desc; }, (k, l) => `<div class="ic">${MAPS[k].icon}</div>${l}`);
+mkBtns($('mapBtns'), MAP_LIST.map(([k, v]) => [k, v.name]), () => S.map, k => { saveState(); S.map = k; loadLayout(); saveState(); build({ cam: true }); $('mapDesc').textContent = MAPS[k].desc; }, (k, l) => `${mapThumb(MAPS[k], k)}<span>${l}</span>`);
 $('mapDesc').textContent = MAPS[S.map].desc;
 {
   const tools = $('obsBtns'); tools.innerHTML = '';
-  const mk = (k, label, icon) => { const b = document.createElement('button'); b.dataset.k = k; b.innerHTML = `<div class="ic">${icon}</div>${label}`; b.onclick = () => { S.tool = S.tool === k ? null : k; refreshTools(); setUIMode(); }; tools.appendChild(b); };
-  for (const [k, v] of Object.entries(OBSTACLES)) mk(k, v.label, v.icon);
+  const ico = icon, mk = (k, label) => { const b = document.createElement('button'); b.dataset.k = k; b.innerHTML = `<div class="ic">${ico(k)}</div><span>${label}</span>`; b.onclick = () => { S.tool = S.tool === k ? null : k; refreshTools(); setUIMode(); if (S.tool) closeSheet(); }; tools.appendChild(b); };
+  for (const [k, v] of Object.entries(OBSTACLES)) mk(k, v.label);
 }
 function refreshTools() {
   document.querySelectorAll('#obsBtns button').forEach(b => b.classList.toggle('on', b.dataset.k === S.tool));
   $('bDraw').classList.toggle('on', S.tool === 'path'); setUIMode();
 }
-$('bDraw').onclick = () => { S.tool = S.tool === 'path' ? null : 'path'; if (S.tool === 'path') { S.sel = -1; } refreshTools(); if (S.tool === 'path') topView(); };
+$('bDraw').onclick = () => { S.tool = S.tool === 'path' ? null : 'path'; if (S.tool === 'path') { S.sel = -1; } refreshTools(); if (S.tool === 'path') { topView(); closeSheet(); } };
 $('bClearPath').onclick = () => { snap(); S.path = []; saveState(); build(); };
 $('bClearObjs').onclick = () => { snap(); S.objects = []; S.sel = -1; saveState(); build(); };
 $('bResetMap').onclick = () => { snap(); delete layouts[S.map]; loadLayout(); saveState(); build({ cam: true }); };
@@ -597,7 +602,7 @@ $('chkSteer').checked = !!S.steer;
 $('chkSteer').onchange = e => { S.steer = e.target.checked; saveState(); setUIMode(); };
 $('bFull').onclick = () => { const d = document.documentElement; if (document.fullscreenElement) document.exitFullscreen(); else if (d.requestFullscreen) d.requestFullscreen().catch(() => { }); };
 $('bCam').onclick = () => cycleCam();
-function toggleMute() { setMuted(!S.muted); $('bMute').textContent = S.muted ? '🔇' : '🔊'; }
+function toggleMute() { setMuted(!S.muted); $('bMute').innerHTML = icon(S.muted ? 'mute' : 'sound'); }
 $('bMute').onclick = toggleMute;
 $('bPause').onclick = () => togglePause();
 $('bRetry').onclick = () => build();
@@ -639,7 +644,7 @@ function togglePause() {
   S.mode = 'replay'; replay.begin(car, true); replay.playing = false; replay.t = rec.duration;
   track.setEditorVisible(false);
   if (S.cam === 'free') cycleCam('chase');
-  cs.init = false; $('rPlay').textContent = '▶'; setUIMode(); $('result').style.display = 'none';
+  cs.init = false; $('rPlay').innerHTML = icon('play'); setUIMode(); $('result').style.display = 'none';
 }
 function exitReplay() {
   replay.end(); S.mode = replayReturn;
@@ -650,9 +655,9 @@ function exitReplay() {
 $('rExit').onclick = exitReplay;
 $('rPlay').onclick = () => {
   if (!replay.playing && replay.t >= rec.duration - 0.01) replay.seek(0);
-  replay.playing = !replay.playing; $('rPlay').textContent = replay.playing ? '⏸' : '▶';
+  replay.playing = !replay.playing; $('rPlay').innerHTML = icon(replay.playing ? 'pause' : 'play');
 };
-$('rScrub').oninput = e => { clearParticles(); cs.init = false; replay.seek(+e.target.value / 1000 * rec.duration); replay.playing = false; $('rPlay').textContent = '▶'; };
+$('rScrub').oninput = e => { clearParticles(); cs.init = false; replay.seek(+e.target.value / 1000 * rec.duration); replay.playing = false; $('rPlay').innerHTML = icon('play'); };
 {
   const host = $('rSpeeds');
   const lab = document.createElement('span'); lab.id = 'rSpd'; lab.style.cssText = 'font-size:12px;min-width:58px;text-align:right'; lab.textContent = 'Slow-mo 0.5×';
@@ -717,7 +722,7 @@ function frame(now) {
     simDt = dt * (replay.playing ? replay.speed : 0);
     const sc2 = $('rScrub'); if (document.activeElement !== sc2) sc2.value = rec.duration ? replay.t / rec.duration * 1000 : 0;
     $('rTime').textContent = `${replay.t.toFixed(1)} / ${rec.duration.toFixed(1)} s`;
-    if (!replay.playing) $('rPlay').textContent = '▶';
+    if (!replay.playing) $('rPlay').innerHTML = icon('play');
   }
   track && track.update(now / 1000);
   updateParticles(simDt);
@@ -760,6 +765,7 @@ function frame(now) {
   if (S.mode === 'ended' && heat.group) { heat.group.rotation.y = now / 1400; heatR.render(heat.scene, heat.cam); }
 }
 
+document.querySelectorAll('[data-i]').forEach(el => { el.innerHTML = icon(el.dataset.i); });
 // ===================================================== boot
 addEventListener('resize', () => setTimeout(refreshSheetH, 50));
 refreshSettings();

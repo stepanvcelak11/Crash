@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <title>Turbo Crash – 3D Dismount Physics</title>
-<link rel="stylesheet" href="css/style.css?v=1793709722">
+<link rel="stylesheet" href="css/style.css?v=1793710061">
 <script>
 window.addEventListener('error',function(e){var l=document.getElementById('loading');if(l)l.insertAdjacentHTML('beforeend','<pre style="color:#f88;font:12px monospace;white-space:pre-wrap;max-width:90vw">'+String(e.message)+' '+(e.filename||'')+'</pre>');});
 window.addEventListener('unhandledrejection',function(e){var l=document.getElementById('loading');if(l)l.insertAdjacentHTML('beforeend','<pre style="color:#f88;font:12px monospace;white-space:pre-wrap;max-width:90vw">'+String(e.reason)+'</pre>');});
@@ -13,19 +13,20 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
 <script type="importmap">
 {
  "imports": {
-  "three": "./vendor/three.module.min.js?v=1793709722",
+  "three": "./vendor/three.module.min.js?v=1793710061",
   "three/addons/": "./vendor/addons/",
-  "cannon-es": "./vendor/cannon-es.js?v=1793709722",
-  "./js/engine.js": "./js/engine.js?v=1793709722",
-  "./js/env.js": "./js/env.js?v=1793709722",
-  "./js/fx.js": "./js/fx.js?v=1793709722",
-  "./js/main.js": "./js/main.js?v=1793709722",
-  "./js/maps.js": "./js/maps.js?v=1793709722",
-  "./js/ragdoll.js": "./js/ragdoll.js?v=1793709722",
-  "./js/replay.js": "./js/replay.js?v=1793709722",
-  "./js/track.js": "./js/track.js?v=1793709722",
-  "./js/vehicle.js": "./js/vehicle.js?v=1793709722",
-  "./js/vehicles.js": "./js/vehicles.js?v=1793709722"
+  "cannon-es": "./vendor/cannon-es.js?v=1793710061",
+  "./js/engine.js": "./js/engine.js?v=1793710061",
+  "./js/env.js": "./js/env.js?v=1793710061",
+  "./js/icons.js": "./js/icons.js?v=1793710061",
+  "./js/fx.js": "./js/fx.js?v=1793710061",
+  "./js/main.js": "./js/main.js?v=1793710061",
+  "./js/maps.js": "./js/maps.js?v=1793710061",
+  "./js/ragdoll.js": "./js/ragdoll.js?v=1793710061",
+  "./js/replay.js": "./js/replay.js?v=1793710061",
+  "./js/track.js": "./js/track.js?v=1793710061",
+  "./js/vehicle.js": "./js/vehicle.js?v=1793710061",
+  "./js/vehicles.js": "./js/vehicles.js?v=1793710061"
  }
 }
 </script>
@@ -34,7 +35,7 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
 <body>
 <div id="game"></div>
 
-<div id="loading"><div class="logo">TURBO&nbsp;CRASH</div><div>Načítám fyziku…</div><div style="opacity:.5;font-size:12px;margin-top:6px">v3 · build 1793709722</div></div>
+<div id="loading"><div class="logo">TURBO&nbsp;CRASH</div><div>Načítám fyziku…</div><div style="opacity:.5;font-size:12px;margin-top:6px">v3 · build 1793710061</div></div>
 
 <!-- score / feed -->
 <div id="hud">
@@ -48,11 +49,11 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
   </div>
   <div id="airBadge">VE VZDUCHU <b id="airT">0.0</b>s</div>
   <div id="tools">
-    <button id="bCam" title="Kamera (C)">📷 <span id="camName">Chase</span></button>
-    <button id="bMute" title="Zvuk (M)">🔊</button>
-    <button id="bFull" title="Celá obrazovka">⛶</button>
-    <button id="bRetryQ" title="Znovu (R)">↻</button>
-    <button id="bPause" title="Pauza / Replay (P)">⏸ PAUZA / REPLAY</button>
+    <button id="bCam" title="Kamera (C)"><i data-i="cam"></i><span id="camName">Chase</span></button>
+    <button id="bMute" title="Zvuk (M)"><i data-i="sound"></i></button>
+    <button id="bFull" title="Celá obrazovka"><i data-i="full"></i></button>
+    <button id="bRetryQ" title="Znovu (R)"><i data-i="retry"></i></button>
+    <button id="bPause" title="Pauza / Replay (P)"><i data-i="pause"></i><span>Replay</span></button>
   </div>
   <div id="flash"></div><div id="speedlines"></div>
   <div id="xrayFrame"><div class="xl">RENTGEN</div><div class="xb" id="xrayBone"></div></div>
@@ -61,13 +62,14 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
 
 <!-- setup -->
 <div id="setup" class="panel">
+  <button id="sheetClose" aria-label="Sbalit"><i data-i="chev"></i></button>
   <div id="tabs">
-    <button data-tab="veh">🚗<span>Vozidlo</span></button>
-    <button data-tab="fig">🧍<span>Figurína</span></button>
-    <button data-tab="map">🗺<span>Mapa</span></button>
-    <button data-tab="obs">🧱<span>Překážky</span></button>
-    <button data-tab="path">✏<span>Trasa</span></button>
-    <button data-tab="set">⚙<span>Možnosti</span></button>
+    <button data-tab="veh"><i data-i="veh"></i><span>Vozidlo</span></button>
+    <button data-tab="fig"><i data-i="fig"></i><span>Figurína</span></button>
+    <button data-tab="map"><i data-i="map"></i><span>Mapa</span></button>
+    <button data-tab="obs"><i data-i="obs"></i><span>Překážky</span></button>
+    <button data-tab="path"><i data-i="route"></i><span>Trasa</span></button>
+    <button data-tab="set"><i data-i="gear"></i><span>Možnosti</span></button>
   </div>
   <div class="tabc" data-tab="veh">
     <h3>Vozidlo</h3><div class="grid4" id="vehBtns"></div>
@@ -81,18 +83,18 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
   <div class="tabc" data-tab="map">
     <h3>Mapa</h3><div class="grid3" id="mapBtns"></div>
     <p class="tip" id="mapDesc"></p>
-    <div class="row"><button id="bResetMap">↺ Výchozí rozložení</button></div>
+    <div class="row"><button id="bResetMap"><i data-i="retry"></i>Výchozí rozložení</button></div>
   </div>
   <div class="tabc" data-tab="obs">
     <h3>Překážky <small>(vyber a klepni na zem)</small></h3><div class="grid4" id="obsBtns"></div>
     <p class="tip">Klepni na překážku = výběr. Táhni ji prstem = přesun. Pak otáčej / zvětšuj / zvedej tlačítky nahoře.</p>
-    <div class="row"><button id="bClearObjs">✖ Smazat všechny</button></div>
+    <div class="row"><button id="bClearObjs"><i data-i="del"></i>Smazat všechny</button></div>
   </div>
   <div class="tabc" data-tab="path">
     <h3>Trasa vozidla</h3>
-    <div class="row"><button id="bDraw">✏ Kreslit trasu</button><button id="bClearPath">🗑 Smazat</button></div>
-    <div class="row"><button id="bTop">⬇ Pohled shora</button><button id="bBehind">🎥 Za vozidlem</button></div>
-    <div class="row"><button id="bUndoT">↶ Zpět (Ctrl+Z)</button></div>
+    <div class="row"><button id="bDraw"><i data-i="route"></i>Kreslit trasu</button><button id="bClearPath"><i data-i="del"></i>Smazat</button></div>
+    <div class="row"><button id="bTop"><i data-i="top"></i>Pohled shora</button><button id="bBehind"><i data-i="behind"></i>Za vozidlem</button></div>
+    <div class="row"><button id="bUndoT"><i data-i="undo"></i>Zpět</button></div>
     <p class="tip">Zapni kreslení a táhni po zemi. Začátek trasy = místo startu vozidla. Bez trasy jede rovně.</p>
   </div>
   <div class="tabc" data-tab="set">
@@ -105,15 +107,15 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
     <label class="chk"><input type="checkbox" id="chkSlow"> Slow-mo při nárazech</label>
     <h3>Odpal</h3>
     <label class="rng">Pevná síla: <b id="powVal">měřič</b><input type="range" id="powRange" min="0" max="100" step="5" value="0"></label>
-    <p class="tip">Verze: v3 · build 1793709722</p><div class="row"><button id="bHelp">❓ Ovládání</button></div>
+    <p class="tip">Verze: v3 · build 1793710061</p><div class="row"><button id="bHelp"><i data-i="help"></i>Ovládání</button></div>
   </div>
 </div>
 <div id="objBar">
   <span id="objName"></span>
-  <button data-a="rl">⟲</button><button data-a="rr">⟳</button><button data-a="sm">−</button><button data-a="sp">+</button>
-  <button data-a="up">⬆</button><button data-a="dn">⬇</button><button data-a="dup">⧉</button><button data-a="undo">↶</button><button data-a="del">🗑</button>
+  <button data-a="rl"><i data-i="rotl"></i></button><button data-a="rr"><i data-i="rotr"></i></button><button data-a="sm"><i data-i="minus"></i></button><button data-a="sp"><i data-i="plus"></i></button>
+  <button data-a="up"><i data-i="up"></i></button><button data-a="dn"><i data-i="down"></i></button><button data-a="dup"><i data-i="dup"></i></button><button data-a="undo"><i data-i="undo"></i></button><button data-a="del"><i data-i="del"></i></button>
 </div>
-<div id="touchCtl"><button id="tcL">◀</button><button id="tcR">▶</button></div>
+<div id="touchCtl"><button id="tcL"><i data-i="left"></i></button><button id="tcR"><i data-i="right"></i></button></div>
 
 <!-- launch -->
 <div id="launch">
@@ -123,11 +125,11 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
 
 <!-- replay -->
 <div id="replayBar">
-  <button id="rPlay">▶</button>
+  <button id="rPlay"><i data-i="play"></i></button>
   <input type="range" id="rScrub" min="0" max="1000" value="1000">
   <span id="rTime">0.0 / 0.0 s</span>
   <div class="speeds" id="rSpeeds"></div>
-  <button id="rExit">Zpět ✕</button>
+  <button id="rExit">Zpět</button>
 </div>
 
 <!-- results -->
@@ -141,9 +143,9 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
     </div>
   </div>
   <div class="resBtns">
-    <button id="bRetry" class="primary">↻ ZNOVU (R)</button>
-    <button id="bReplay">⏪ REPLAY</button>
-    <button id="bSetup">⚙ Nastavení</button>
+    <button id="bRetry" class="primary"><i data-i="retry"></i>ZNOVU</button>
+    <button id="bReplay"><i data-i="play"></i>REPLAY</button>
+    <button id="bSetup"><i data-i="gear"></i>Nastavení</button>
   </div>
 </div>
 
@@ -160,6 +162,6 @@ window.addEventListener('unhandledrejection',function(e){var l=document.getEleme
     <tr><td>Gamepad</td><td>A = odpal/vyhodit • páčka = řízení • Y = restart • RB = kamera • Start = pauza</td></tr>
   </table><button id="bHelpClose" class="primary">Zavřít</button></div>
 
-<script type="module" src="js/main.js?v=1793709722"></script>
+<script type="module" src="js/main.js?v=1793710061"></script>
 </body>
 </html>

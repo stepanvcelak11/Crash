@@ -18,6 +18,13 @@ Lokálně: `python3 -m http.server 8000` a otevřít `http://localhost:8000`.
 | **W / S** (v editoru) | posun kamery po trati |
 | **M** | zvuk |
 
+## Novinky (v2)
+- **Mobil:** dotykové ovládání (tah = kamera, dva prsty = zoom + posun, tlačítka řízení, velké tlačítko odpalu), spodní panel se záložkami, přepínač kvality, celá obrazovka. Hraj na šířku.
+- **Vozidla:** auto, nákupní košík, motokára, dodávka, monster truck (každé má vlastní fyziku, deformaci a barvy).
+- **Mapy:** silnice, poušť, led (kluzko), noční město, aréna, propast, Měsíc (nízká gravitace).
+- **Kreslení trasy:** záložka Trasa → Kreslit; vozidlo startuje na začátku čáry a samo ji následuje.
+- **Překážky kamkoliv:** klepni na zem, pak je přesouvej tahem, otáčej, zvětšuj a zvedej. Rozložení se ukládá pro každou mapu.
+
 ## Co hra obsahuje
 **Příprava pokusu** – 6 póz (sedící, stojící, Superman, skloněný, salto, vzpažený), umístění (v autě / na střeše / na kapotě / na silnici bez auta), 10 slotů na trati a 6 překážek (můstek, turbo, mina, olej, zeď, píst). Sloty se nastavují klikem do 3D scény nebo na minimapu.
 

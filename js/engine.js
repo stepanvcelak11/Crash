@@ -13,6 +13,7 @@ export const GROUP = { GROUND: 1, CAR: 2, DUMMY: 4, DEBRIS: 8, STATIC: 16 };
 export const ALL = 0xffff;
 
 // ---------- shared game state ----------
+export const IS_TOUCH = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
 export const S = {
   mode: 'setup',            // setup | launching | running | ended | replay
   time: 0,                  // simulation time of the attempt (s)
@@ -25,12 +26,13 @@ export const S = {
   power: 0,
   best: 0,
   muted: false,
-  quality: 1,
+  quality: IS_TOUCH ? 'low' : 'high',
 };
 
 // ---------- renderer / scene ----------
 export const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const DPR = { high: 2, med: 1.5, low: 1.25 };
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DPR[S.quality]));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -58,15 +60,17 @@ camera.position.set(0, 12, 20);
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1500, 24, 16), mat);
   dome.renderOrder = -10;
   scene.add(dome);
-  scene.userData.dome = dome;
+  scene.userData.dome = dome; scene.userData.domeU = mat.uniforms;
 }
 
 // lights
-scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x5a6b45, 1.0));
+export const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x5a6b45, 1.0);
+scene.add(hemi);
 export const sun = new THREE.DirectionalLight(0xfff1d8, 2.6);
 sun.position.set(60, 90, 40);
 sun.castShadow = true;
-sun.shadow.mapSize.set(4096, 4096);
+const SHADOW = { high: 4096, med: 2048, low: 1024 };
+sun.shadow.mapSize.set(SHADOW[S.quality], SHADOW[S.quality]);
 sun.shadow.camera.left = -50; sun.shadow.camera.right = 50;
 sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50;
 sun.shadow.camera.near = 10; sun.shadow.camera.far = 260;
@@ -85,7 +89,7 @@ const MotionBlurShader = {
 };
 export let composer, bloomPass, blurPass;
 function buildComposer(w, h) {
-  const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
+  const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: S.quality === 'high' ? 4 : (IS_TOUCH ? 0 : 2) });
   composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.65, 0.92);
@@ -195,3 +199,20 @@ export function rng(seed) {
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
 export { buildComposer };
+
+// ---------- environment / quality ----------
+export function applyEnv(map) {
+  const u = scene.userData.domeU;
+  u.top.value.setHex(map.sky[0]); u.mid.value.setHex(map.sky[1]); u.bot.value.setHex(map.sky[2]);
+  scene.fog.color.setHex(map.fog[0]); scene.fog.density = map.fog[1];
+  hemi.color.setHex(map.hemi[0]); hemi.groundColor.setHex(map.hemi[1]); hemi.intensity = map.hemi[2];
+  sun.color.setHex(map.sun[0]); sun.intensity = map.sun[1];
+  world.gravity.set(0, map.gravity, 0);
+}
+export function setQuality(q) {
+  S.quality = q;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DPR[q]));
+  sun.shadow.mapSize.set(SHADOW[q], SHADOW[q]);
+  if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  resize();
+}

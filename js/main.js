@@ -1,12 +1,14 @@
-// Game flow: setup -> launch (power meter) -> run -> results / replay.  Cameras, scoring, UI.
+// Game flow: setup (vehicle / map / obstacles / drawn route) -> launch (power meter) -> run -> results / replay.
 import {
-  THREE, CANNON, S, renderer, scene, camera, composer, bloomPass, blurPass, view, world, sun, sunOffset, entities,
-  clearLevel, syncEntities,
+  THREE, CANNON, S, IS_TOUCH, renderer, scene, camera, composer, bloomPass, blurPass, view, world, sun, sunOffset, entities,
+  clearLevel, syncEntities, applyEnv, setQuality,
 } from './engine.js';
 import { fx, fxLog, fxState, updateParticles, clearParticles, initAudio, setMuted, engineSound, beep, setFractureFxHandler } from './fx.js';
 import { Dummy, BONES, POSES, poseTransforms, lowestPoint, buildBoneMesh, heatColor } from './ragdoll.js';
 import { Car } from './vehicle.js';
-import { Track, SLOT_POS, OBSTACLES, CAM_POINTS, END_Z } from './track.js';
+import { VEHICLES, VEHICLE_LIST, COLORS } from './vehicles.js';
+import { MAPS, MAP_LIST } from './maps.js';
+import { Track, OBSTACLES } from './track.js';
 import { rec, replay } from './replay.js';
 
 const $ = id => document.getElementById(id);
@@ -14,50 +16,79 @@ const Yaxis = new THREE.Vector3(0, 1, 0);
 const H = 1 / 120;
 const clamp = THREE.MathUtils.clamp;
 const CAMS = [['chase', 'Chase'], ['pov', 'POV'], ['fly', 'Fly-by'], ['free', 'Free']];
+const rotYpi = new THREE.Quaternion().setFromAxisAngle(Yaxis, Math.PI);
 
 let track, car, dummy;
-let sc, flipAcc, airT, quietT, pendingEject, startZ;
+let sc, flipAcc, airT, quietT, pendingEject, apIdx = 0;
 
-S.slots = SLOT_POS.map(() => null);
-S.slots[0] = 'ramp'; S.slots[2] = 'boost'; S.slots[4] = 'mine'; S.slots[6] = 'wall';
-try { S.best = +localStorage.getItem('turbocrash.best') || 0; } catch (e) { }
+// ===================================================== persistent settings
+Object.assign(S, { vehicle: 'sedan', color: null, map: 'road', objects: [], path: [], sel: -1, tool: null, start: { x: 0, z: 8, hx: 0, hz: -1, yaw: 0 }, sheetOpen: !IS_TOUCH, tab: 'veh' });
+let layouts = {};
+try {
+  const j = JSON.parse(localStorage.getItem('turbocrash.v2') || '{}');
+  for (const k of ['vehicle', 'color', 'map', 'pose', 'place', 'steer']) if (j[k] !== undefined && j[k] !== null) S[k] = j[k];
+  layouts = j.layouts || {};
+  S.best = +localStorage.getItem('turbocrash.best') || 0;
+} catch (e) { }
+if (!VEHICLES[S.vehicle]) S.vehicle = 'sedan';
+if (!MAPS[S.map]) S.map = 'road';
+function saveState() {
+  layouts[S.map] = { objects: S.objects, path: S.path };
+  try { localStorage.setItem('turbocrash.v2', JSON.stringify({ vehicle: S.vehicle, color: S.color, map: S.map, pose: S.pose, place: S.place, steer: S.steer, layouts })); } catch (e) { }
+}
+function loadLayout() {
+  const l = layouts[S.map];
+  S.objects = l ? JSON.parse(JSON.stringify(l.objects)) : JSON.parse(JSON.stringify(MAPS[S.map].defaults));
+  S.path = l ? l.path || [] : [];
+  S.sel = -1;
+}
+loadLayout();
 
 // ===================================================== build / reset
 function resetScore() {
   sc = { fracture: 0, dislocation: 0, air: 0, flips: 0, eject: 0, vehicle: 0, destruction: 0, nFrac: 0, nDisl: 0, nFlip: 0 };
-  flipAcc = { d: 0, dn: 0, c: 0, cn: 0 }; airT = 0; quietT = 0; pendingEject = null;
+  flipAcc = { d: 0, dn: 0, c: 0, cn: 0 }; airT = 0; quietT = 0; pendingEject = null; apIdx = 0;
   $('feed').innerHTML = '';
 }
 const total = () => Math.round(sc.fracture + sc.dislocation + sc.air + sc.flips + sc.eject + sc.vehicle + sc.destruction);
 
-function build() {
+function build(opts = {}) {
   rec.data = null; replay.active = false;
   clearLevel(); clearParticles(); fxLog.length = 0; fxState.logging = false;
   S.time = 0; S.ejectTime = Infinity;
   resetScore();
-  track = new Track(S.slots);
+  const map = MAPS[S.map], spec = VEHICLES[S.vehicle];
+  applyEnv(map);
+  track = new Track(map, S.objects, S.path, S.sel);
   track.hooks.wallBroken = () => addScore('destruction', 150, 'Zeď rozbita', false);
   track.hooks.explosion = () => { S.shake = 1; if (dummy && dummy.attached && car) pendingEject = { vel: car.body.velocity.clone(), up: 6 }; };
+  // start position / heading (from the drawn route when there is one)
+  let sx = map.start[0], sz = map.start[1], hx = 0, hz = -1;
+  if (S.path.length >= 2) {
+    const p0 = S.path[0]; sx = p0[0]; sz = p0[1];
+    let k = 1; while (k < S.path.length - 1 && Math.hypot(S.path[k][0] - sx, S.path[k][1] - sz) < 5) k++;
+    hx = S.path[k][0] - sx; hz = S.path[k][1] - sz; const l = Math.hypot(hx, hz) || 1; hx /= l; hz /= l;
+  }
+  const yaw = Math.atan2(-hx, -hz);
+  S.start = { x: sx, z: sz, hx, hz, yaw };
   car = null;
   if (S.place !== 'road') {
-    car = new Car(0, 8, 0);
-    car.body.position.y = 0.66;
-    track.car = car; car.dummy = null; car.hist = new Array(20).fill(null);
+    car = new Car(spec, sx, sz, yaw, S.color);
+    car.slipMul = map.slipMul ?? 1;
+    track.car = car; car.hist = new Array(20).fill(null);
     car.onDamage = m => addScore('vehicle', m * 160, null);
-    car.onPartLost = n => addScore('vehicle', 120, n === 'wheel' ? 'Kolo odpadlo' : 'Díl auta odpadl', false);
+    car.onPartLost = n => addScore('vehicle', 120, n === 'wheel' ? 'Kolo odpadlo' : 'Díl odpadl', false);
     car.onEjectRequest = (r, vel) => { if (!pendingEject) pendingEject = { vel, up: 3 }; };
   }
-  // ---- dummy placement ----
-  const yaw = new THREE.Quaternion().setFromAxisAngle(Yaxis, Math.PI);
-  const low = lowestPoint(poseTransforms(S.pose, new THREE.Vector3(), yaw));
-  let tx = 0, tz = 2, ty = 0.0;
+  // ---- dummy placement (car-local, then rotated by the start yaw) ----
+  const qy = new THREE.Quaternion().setFromAxisAngle(Yaxis, yaw), rq = qy.clone().multiply(rotYpi);
+  const low = lowestPoint(poseTransforms(S.pose, new THREE.Vector3(), rq));
+  let root;
   if (car) {
-    const c = car.body.position;
-    if (S.place === 'inside') { tz = c.z + 0.3; ty = c.y - 0.24; }
-    if (S.place === 'roof') { tz = c.z + 0.25; ty = c.y + 1.13; }
-    if (S.place === 'hood') { tz = c.z - 1.4; ty = c.y + 0.39; }
-  }
-  dummy = new Dummy(S.pose, new THREE.Vector3(tx, ty - low + 0.01, tz), yaw);
+    const pl = spec.place[S.place];
+    root = new THREE.Vector3(0, pl.y - low, pl.z).applyQuaternion(qy).add(new THREE.Vector3(sx, spec.rideY, sz));
+  } else root = new THREE.Vector3(sx, 0.01 - low, sz);
+  dummy = new Dummy(S.pose, root, rq);
   dummy.onFracture = (bone, v, p) => {
     sc.nFrac++; addScore('fracture', bone.def.pts, `${bone.def.label} – zlomenina!`, true);
     fx('fracture', p.x, p.y, p.z, 1, bone.def.name); S.flash = 1; S.shake = Math.max(S.shake || 0, 0.35);
@@ -67,17 +98,12 @@ function build() {
     fx('fracture', p.x, p.y, p.z, 1, bone.def.name);
   };
   if (car) car.dummy = dummy;
-  syncEntities();
-  if (car) car.syncWheels();
-  track.setSlotsVisible(true);
-  startZ = tz;
+  syncEntities(); if (car) car.syncWheels();
+  track.setEditorVisible(true);
   S.mode = 'setup'; setUIMode();
-  $('score').textContent = '0';
-  $('result').style.display = 'none';
-  $('xrayFrame').style.display = 'none';
-  S.xrayUntil = 0;
-  orbit.target.set(0, 1.5, orbitTargetZ); camMode();
-  drawMinimap();
+  $('score').textContent = '0'; $('result').style.display = 'none'; $('xrayFrame').style.display = 'none'; S.xrayUntil = 0;
+  if (opts.cam) { orbit.target.set(sx + hx * 18, 1.5, sz + hz * 18); orbit.yaw = yaw; orbit.pitch = 0.42; orbit.dist = 36; }
+  camMode(); updateObjBar();
 }
 
 // ===================================================== scoring
@@ -92,7 +118,7 @@ function feed(msg, pts, bad) {
   d.className = 'fi' + (bad ? ' bad' : '');
   d.innerHTML = `${msg} <b>+${pts}</b>`;
   const f = $('feed'); f.prepend(d);
-  while (f.children.length > 7) f.lastChild.remove();
+  while (f.children.length > 6) f.lastChild.remove();
   setTimeout(() => d.remove(), 3600);
 }
 function scoringStep(h) {
@@ -104,21 +130,37 @@ function scoringStep(h) {
       if (n > flipAcc.dn) { sc.flips += 250 * (n - flipAcc.dn); sc.nFlip += n - flipAcc.dn; feed(`Salto ×${n}`, 250 * (n - flipAcc.dn)); flipAcc.dn = n; }
     } else { if (airT > 1.2) feed(`Čas ve vzduchu ${airT.toFixed(1)} s`, Math.round(airT * 85)); airT = 0; }
   }
-  if (car) {
-    if (car.airborne) {
-      sc.air += 40 * h; flipAcc.c += car.body.angularVelocity.length() * h;
-      const n = Math.floor(flipAcc.c / (Math.PI * 2));
-      if (n > flipAcc.cn) { sc.flips += 150 * (n - flipAcc.cn); sc.nFlip += n - flipAcc.cn; feed(`Auto salto ×${n}`, 150 * (n - flipAcc.cn)); flipAcc.cn = n; }
-    }
+  if (car && car.airborne) {
+    sc.air += 40 * h; flipAcc.c += car.body.angularVelocity.length() * h;
+    const n = Math.floor(flipAcc.c / (Math.PI * 2));
+    if (n > flipAcc.cn) { sc.flips += 150 * (n - flipAcc.cn); sc.nFlip += n - flipAcc.cn; feed(`Salto vozidla ×${n}`, 150 * (n - flipAcc.cn)); flipAcc.cn = n; }
   }
 }
 
+// ===================================================== autopilot (follows the drawn route)
+function autopilot() {
+  const path = S.path; if (path.length < 2 || !car) return null;
+  const p = car.body.position, d = i => Math.hypot(path[i][0] - p.x, path[i][1] - p.z);
+  while (apIdx < path.length - 1 && d(apIdx + 1) < d(apIdx)) apIdx++;
+  const look = 5 + car.speed * 0.35;
+  let acc = 0, i = apIdx, tx = path[i][0], tz = path[i][1];
+  while (i < path.length - 1 && acc < look) { const a = path[i], b = path[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]); acc += l; i++; tx = b[0]; tz = b[1]; }
+  if (acc < look && path.length > 1) { // beyond the end: keep going straight on
+    const a = path[path.length - 2], b = path[path.length - 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    tx += (b[0] - a[0]) / l * (look - acc); tz += (b[1] - a[1]) / l * (look - acc);
+  }
+  const f = car.forward; let vx = tx - p.x, vz = tz - p.z; const l = Math.hypot(vx, vz) || 1; vx /= l; vz /= l;
+  const fl = Math.hypot(f.x, f.z) || 1, fx2 = f.x / fl, fz2 = f.z / fl;
+  const sinT = fz2 * vx - fx2 * vz, cosT = fx2 * vx + fz2 * vz;
+  return Math.atan2(sinT, cosT);   // + = target on the left
+}
+
 // ===================================================== launch / run
-let meterT = 0;
+let meterT = 0, baseTarget = 0;
 function startLaunch() {
   if (S.mode !== 'setup') return;
   initAudio(); S.mode = 'launching'; meterT = 0; S.power = 0;
-  $('meter').style.display = 'block'; $('bLaunch').classList.add('held');
+  $('meter').style.display = 'block'; $('bLaunch').classList.add('held'); closeSheet();
   beep(440);
 }
 function releaseLaunch() {
@@ -127,49 +169,52 @@ function releaseLaunch() {
   doLaunch(Math.max(0.08, S.power));
 }
 function doLaunch(p) {
-  S.mode = 'running'; S.time = 0; S.cam = S.cam === 'free' ? 'chase' : S.cam; camMode();
+  S.mode = 'running'; S.time = 0; if (S.cam === 'free') S.cam = 'chase'; camMode();
   fxLog.length = 0; fxState.logging = true;
-  cs.init = false; cs.pos.copy(camera.position); cs.head.set(0, 0, -1); cs.look.copy(orbit.target); cs.sp = 0;
-  track.setSlotsVisible(false);
+  cs.init = false; cs.pos.copy(camera.position); cs.head.set(S.start.hx, 0, S.start.hz); cs.look.copy(orbit.target); cs.sp = 0; cs.flyPos = null;
+  track.setEditorVisible(false);
   if (car) {
-    const target = 14 + p * 50;
-    car.target = target; car.engineOn = true;
-    const f = car.forward, v0 = target * 0.6;
+    const sp = car.spec;
+    baseTarget = sp.speed[0] + p * (sp.speed[1] - sp.speed[0]);
+    car.target = baseTarget; car.engineOn = true;
+    const f = car.forward, v0 = baseTarget * 0.6;
     car.body.velocity.set(f.x * v0, 0, f.z * v0);
     dummy.attachTo(car.body);
     for (const b of dummy.list) b.body.velocity.copy(car.body.velocity);
-    // the car body is placed a bit high above its suspension: let it settle first
   } else {
-    const sp = 12 + p * 38;
-    dummy.launch(new CANNON.Vec3(0, sp * 0.34, -sp * 0.94));
+    const sp = 12 + p * 38, { hx, hz } = S.start;
+    dummy.launch(new CANNON.Vec3(hx * sp * 0.94, sp * 0.34, hz * sp * 0.94));
     S.ejectTime = 0;
   }
   rec.start(75);
-  setUIMode();
-  beep(880, 0.12);
+  setUIMode(); beep(880, 0.12);
 }
 function doEject(user) {
   if (!dummy || !dummy.attached || !car) return;
   const v = pendingEject ? pendingEject.vel : car.body.velocity;
   const f = car.forward, sp = v.length();
-  const vel = new CANNON.Vec3(v.x + f.x * 1.5, v.y, v.z + f.z * 1.5);
-  dummy.eject(vel, pendingEject ? pendingEject.up : (user ? 6 : 3));
+  dummy.eject(new CANNON.Vec3(v.x + f.x * 1.5, v.y, v.z + f.z * 1.5), pendingEject ? pendingEject.up : (user ? 6 : 3));
   S.ejectTime = S.time;
   addScore('eject', 100 + sp * 14, 'Figurína vyhozena!', false);
   S.shake = Math.max(S.shake || 0, 0.2);
-  pendingEject = null;
-  setUIMode();
+  pendingEject = null; setUIMode();
 }
 
 let smokeT = 0, scrapeT = 0;
 function physicsStep(h) {
   track.step(h, { car, dummy });
-  if (car) { car.steerInput = S.steer ? steerAxis : 0; car.step(h); }
+  if (car) {
+    const th = autopilot();
+    let st = 0;
+    if (th !== null) { st = clamp(th * 1.8, -1, 1); const L = 5 + car.speed * 0.35, kap = 2 * Math.abs(Math.sin(th)) / L; car.target = Math.max(7, Math.min(baseTarget, Math.sqrt(9 / Math.max(kap, 1e-3)))); }
+    if (S.steer) st = clamp(st + steerAxis, -1, 1);
+    car.steerInput = st;
+    car.step(h);
+  }
   world.step(h);
   S.time += h;
   if (car) car.syncWheels();
   if (dummy) dummy.postStep();
-  // sudden loss of speed (wall, hard landing) throws the dummy out of the car
   if (car) {
     const hv = car.hist, i = car.histI = ((car.histI || 0) + 1) % 20, cv = car.body.velocity;
     const old = hv[i]; hv[i] = [cv.x, cv.y, cv.z];
@@ -178,12 +223,10 @@ function physicsStep(h) {
       if (dv > 11) pendingEject = { vel: new CANNON.Vec3(old[0], old[1], old[2]), up: 2 };
     }
   }
-  if (pendingEject && dummy && dummy.attached) doEject(false);
-  else pendingEject = null;
+  if (pendingEject && dummy && dummy.attached) doEject(false); else pendingEject = null;
   if (dummy && dummy.ejected && !dummy.freeCar && S.time > dummy.freeAt) { dummy.freeCar = true; dummy.setCollideWithCar(true); }
   scoringStep(h);
   rec.tick(h);
-  // continuous effects (logged so the replay shows them)
   smokeT += h; scrapeT += h;
   if (smokeT > 0.07) {
     smokeT = 0;
@@ -192,22 +235,19 @@ function physicsStep(h) {
   }
   if (scrapeT > 0.05) {
     scrapeT = 0;
-    if (car && car.speed > 6 && car.body.position.y < 0.55 && !car.vehicle.wheelInfos.some(w => w.isInContact)) { const p = car.body.position; fx('scrape', p.x, 0.1, p.z); }
+    if (car && car.speed > 6 && car.body.position.y < car.spec.rideY - 0.1 && !car.vehicle.wheelInfos.some(w => w.isInContact)) { const p = car.body.position; fx('scrape', p.x, 0.1, p.z); }
     if (dummy && !dummy.attached && dummy.pelvis.body.position.y < 0.4 && dummy.speed > 7) { const p = dummy.pelvis.body.position; fx('scrape', p.x, 0.1, p.z); }
   }
-  // end detection
-  const quiet = (!dummy || dummy.speed < 0.9) && (!car || car.speed < 1.0);
+  const quiet = (!dummy || dummy.speed < 0.9) && (!car || car.speed < 1.0 || (dummy && !dummy.attached));
   if (S.time > 3 && quiet) quietT += h; else quietT = 0;
-  if ((quietT > 1.4 || S.time > 60 || rec.frames >= rec.max - 2) && S.mode === 'running') endRun();
+  const fell = dummy && dummy.pelvis.body.position.y < -90;
+  if ((quietT > 1.4 || S.time > 60 || fell || rec.frames >= rec.max - 2) && S.mode === 'running') endRun();
 }
 
 function endRun() {
-  S.mode = 'ended'; fxState.logging = false;
-  rec.capture();
+  S.mode = 'ended'; fxState.logging = false; rec.capture();
   if (car) { car.engineOn = false; engineSound(0, false); }
   S.cam = 'free'; camMode(); orbit.dist = 12; orbit.yaw = 0.6; orbit.pitch = 0.3;
-  // flush air time
-  if (airT > 0.4) sc.air += 0;
   showResult();
 }
 
@@ -223,31 +263,25 @@ heatR.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:10
 $('heat').prepend(heatR.domElement);
 
 function showResult() {
-  const T = total();
-  let newBest = false;
+  const T = total(); let newBest = false;
   if (T > S.best) { S.best = T; newBest = true; try { localStorage.setItem('turbocrash.best', String(T)); } catch (e) { } }
   const row = (a, b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
   $('breakdown').innerHTML =
     row(`Zlomeniny (${sc.nFrac})`, Math.round(sc.fracture)) + row(`Vykloubení (${sc.nDisl})`, Math.round(sc.dislocation)) +
     row('Čas ve vzduchu', Math.round(sc.air)) + row(`Salta / rotace (${sc.nFlip})`, Math.round(sc.flips)) +
-    row('Bonus za vyhození', Math.round(sc.eject)) + row('Poškození auta', Math.round(sc.vehicle)) + row('Destrukce', Math.round(sc.destruction)) +
+    row('Bonus za vyhození', Math.round(sc.eject)) + row('Poškození vozidla', Math.round(sc.vehicle)) + row('Destrukce', Math.round(sc.destruction)) +
     `<tr class="total"><td>CELKEM</td><td>${T}</td></tr>` + row(newBest ? '🏆 NOVÝ REKORD' : 'Rekord', S.best);
-  const fr = dummy.list.filter(b => b.fractured).map(b => b.def.label);
-  const di = dummy.list.filter(b => b.dislocated && !b.fractured).map(b => b.def.label);
+  const fr = dummy.list.filter(b => b.fractured).map(b => b.def.label), di = dummy.list.filter(b => b.dislocated && !b.fractured).map(b => b.def.label);
   $('fracList').innerHTML = (fr.length ? '🦴 Zlomeno: ' + fr.join(', ') : 'Žádná zlomenina.') + (di.length ? `<br><span style="color:#ffd38a">Vykloubeno: ${di.join(', ')}</span>` : '');
-  // heat model
-  if (heat.group) { heat.scene.remove(heat.group); }
-  const g = new THREE.Group();
-  const tr = poseTransforms('tpose', new THREE.Vector3(), new THREE.Quaternion());
+  if (heat.group) heat.scene.remove(heat.group);
+  const g = new THREE.Group(), tr = poseTransforms('tpose', new THREE.Vector3(), new THREE.Quaternion());
   for (const b of dummy.list) {
-    const m = buildBoneMesh(b.def, heatColor(b.dmg, b.fractured).getHex());
-    m.material.roughness = 0.6;
+    const m = buildBoneMesh(b.def, heatColor(b.dmg, b.fractured).getHex()); m.material.roughness = 0.6;
     if (b.fractured) { m.material.emissive = heatColor(1, true); m.material.emissiveIntensity = 0.5; }
     const t = tr[b.def.name]; m.position.copy(t.center); m.quaternion.copy(t.q); g.add(m);
   }
   heat.group = g; heat.scene.add(g);
-  $('result').style.display = 'block';
-  setUIMode();
+  $('result').style.display = 'block'; setUIMode();
 }
 
 // ===================================================== X-ray
@@ -271,9 +305,8 @@ setFractureFxHandler(showXray);
 
 // ===================================================== cameras
 const orbit = { yaw: 0, pitch: 0.42, dist: 36, target: new THREE.Vector3(0, 1.5, -6) };
-let orbitTargetZ = -6;
-const cs = { pos: new THREE.Vector3(0, 8, 20), look: new THREE.Vector3(), head: new THREE.Vector3(0, 0, -1), prev: new THREE.Vector3(), vel: new THREE.Vector3(), fly: 0, init: false, sp: 0 };
-function camMode() { $('camName').textContent = S.mode === 'setup' || S.mode === 'launching' && false ? 'Editor' : (CAMS.find(c => c[0] === S.cam) || CAMS[0])[1]; }
+const cs = { pos: new THREE.Vector3(0, 8, 20), look: new THREE.Vector3(), head: new THREE.Vector3(0, 0, -1), prev: new THREE.Vector3(), vel: new THREE.Vector3(), flyPos: null, flySide: 1, init: false, sp: 0 };
+function camMode() { $('camName').textContent = (CAMS.find(c => c[0] === S.cam) || CAMS[0])[1]; }
 function cycleCam(to) {
   if (to) S.cam = to; else { const i = CAMS.findIndex(c => c[0] === S.cam); S.cam = CAMS[(i + 1) % CAMS.length][0]; }
   if (S.cam === 'free') { orbit.target.copy(cs.look); orbit.dist = Math.max(8, camera.position.distanceTo(cs.look)); const d = camera.position.clone().sub(cs.look); orbit.yaw = Math.atan2(d.x, d.z); orbit.pitch = clamp(Math.asin(d.y / d.length()), 0.05, 1.4); }
@@ -284,44 +317,42 @@ function subject() {
   const useDummy = !car || t >= S.ejectTime;
   return { useDummy, mesh: useDummy ? dummy.pelvis.mesh : car.group };
 }
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
-const rotYpi = new THREE.Quaternion().setFromAxisAngle(Yaxis, Math.PI);
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion();
 function updateCamera(dt) {
-  const k = (r) => 1 - Math.exp(-dt * r);
-  if (S.mode === 'setup' || S.mode === 'launching') {
-    placeOrbit(dt, true); return;
-  }
+  const k = r => 1 - Math.exp(-dt * r);
+  if (S.mode === 'setup' || S.mode === 'launching') { placeOrbit(); return; }
   const sj = subject(), pos = sj.mesh.position;
   if (!cs.init) { cs.prev.copy(pos); cs.look.copy(pos); cs.init = true; }
   cs.vel.copy(pos).sub(cs.prev).divideScalar(Math.max(dt, 1e-3)); cs.prev.copy(pos);
+  if (S.mode === 'replay' && replay.seeking) cs.vel.set(0, 0, 0);
   const speed = cs.vel.length(); cs.sp += (speed - cs.sp) * k(6);
+  if (cs.sp > 3) { _a.set(cs.vel.x, 0, cs.vel.z).normalize(); cs.head.lerp(_a, k(2)).normalize(); }
   let fov = 62 + clamp(cs.sp / 60, 0, 1) * 16;
-  const headMesh = dummy.head.mesh;
-  headMesh.visible = true;
-  if (S.cam === 'chase' || (S.cam === 'pov' && false)) {
-    if (cs.sp > 3) { _a.set(cs.vel.x, 0, cs.vel.z).normalize(); cs.head.lerp(_a, k(2)).normalize(); }
-    const dist = sj.useDummy ? 6.5 : 10, h = sj.useDummy ? 2.4 : 3.8;
+  const headMesh = dummy.head.mesh; headMesh.visible = true;
+  if (S.cam === 'chase') {
+    const big = car ? car.spec.dentScale : 1;
+    const dist = sj.useDummy ? 6.5 : 7 + 3 * big, h = sj.useDummy ? 2.4 : 2.4 + 1.4 * big;
     _b.copy(pos).addScaledVector(cs.head, -dist); _b.y = pos.y + h;
     cs.pos.lerp(_b, k(5)); cs.pos.y = Math.max(cs.pos.y, 0.7);
     _a.copy(pos); _a.y += 0.9; cs.look.lerp(_a, k(9));
     camera.position.copy(cs.pos); camera.lookAt(cs.look);
   } else if (S.cam === 'pov') {
-    const hm = headMesh; hm.visible = false;
-    _a.set(0, 0.05, 0.16).applyQuaternion(hm.quaternion).add(hm.position);
+    headMesh.visible = false;
+    _a.set(0, 0.05, 0.16).applyQuaternion(headMesh.quaternion).add(headMesh.position);
     camera.position.lerp(_a, 0.9);
-    _q.copy(hm.quaternion).multiply(rotYpi);
-    camera.quaternion.slerp(_q, k(14)); fov = 80;
-    cs.look.copy(hm.position);
+    _q.copy(headMesh.quaternion).multiply(rotYpi); camera.quaternion.slerp(_q, k(14)); fov = 80;
+    cs.look.copy(headMesh.position);
   } else if (S.cam === 'fly') {
-    let best = cs.fly, bd = CAM_POINTS[best].distanceTo(pos);
-    for (let i = 0; i < CAM_POINTS.length; i++) { const d = CAM_POINTS[i].distanceTo(pos); if (d < bd * 0.7) { best = i; bd = d; } }
-    cs.fly = best;
-    camera.position.copy(CAM_POINTS[best]);
+    if (!cs.flyPos || cs.flyPos.distanceTo(pos) > 70 || cs.head.dot(_a.copy(pos).sub(cs.flyPos)) > 22) {
+      cs.flySide *= -1;
+      cs.flyPos = new THREE.Vector3().copy(pos).addScaledVector(cs.head, 38).add(_b.set(-cs.head.z * 13 * cs.flySide, 0, cs.head.x * 13 * cs.flySide));
+      cs.flyPos.y = 2.4 + Math.random() * 2;
+    }
+    camera.position.copy(cs.flyPos);
     cs.look.lerp(_a.copy(pos).setY(pos.y + 0.8), k(10)); camera.lookAt(cs.look);
-    fov = clamp(Math.atan(6 / Math.max(bd, 6)) * 2 * 57.3, 20, 70);
-  } else { // free
-    orbit.target.lerp(_a.copy(pos).setY(pos.y + 0.8), k(4)); cs.look.copy(orbit.target);
-    placeOrbit(dt, false);
+    fov = clamp(Math.atan(6 / Math.max(cs.flyPos.distanceTo(pos), 6)) * 2 * 57.3, 20, 70);
+  } else {
+    orbit.target.lerp(_a.copy(pos).setY(pos.y + 0.8), k(4)); cs.look.copy(orbit.target); placeOrbit();
   }
   if (camera.fov !== fov) { camera.fov += (fov - camera.fov) * k(5); camera.updateProjectionMatrix(); }
   if (S.shake > 0.01) {
@@ -329,91 +360,185 @@ function updateCamera(dt) {
     S.shake *= Math.exp(-dt * 5);
   }
 }
-function placeOrbit(dt, setup) {
-  if (setup) orbit.target.z += (orbitTargetZ - orbit.target.z) * (1 - Math.exp(-dt * 6));
+function placeOrbit() {
   const cp = Math.cos(orbit.pitch);
   camera.position.set(orbit.target.x + Math.sin(orbit.yaw) * cp * orbit.dist, Math.max(0.6, orbit.target.y + Math.sin(orbit.pitch) * orbit.dist), orbit.target.z + Math.cos(orbit.yaw) * cp * orbit.dist);
   camera.lookAt(orbit.target);
   if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); }
 }
+function panTarget(right, fwd) {
+  const fx2 = -Math.sin(orbit.yaw), fz2 = -Math.cos(orbit.yaw);
+  orbit.target.x = clamp(orbit.target.x + right * -fz2 + fwd * fx2, -450, 450);
+  orbit.target.z = clamp(orbit.target.z + right * fx2 + fwd * fz2, -880, 390);
+}
 
 // ===================================================== input
-let steerAxis = 0;
+let steerAxis = 0, steerTouch = 0;
 const keys = {};
 addEventListener('keydown', e => {
   if (e.repeat) return;
   const k = e.key.toLowerCase(); keys[k] = true;
-  if (k === ' ') {
-    e.preventDefault();
-    if (S.mode === 'setup') startLaunch(); else if (S.mode === 'running') doEject(true);
-  }
+  if (k === ' ') { e.preventDefault(); if (S.mode === 'setup') startLaunch(); else if (S.mode === 'running') doEject(true); }
   if (k === 'r') { if (S.mode !== 'launching') build(); }
   if (k === 'c') cycleCam();
   if (k >= '1' && k <= '4' && S.mode !== 'setup') cycleCam(CAMS[+k - 1][0]);
   if (k === 'm') toggleMute();
   if (k === 'p') togglePause();
-  if (k === 'escape' && S.mode === 'replay') exitReplay();
+  if (k === 'escape') { if (S.mode === 'replay') exitReplay(); else { S.tool = null; refreshTools(); } }
+  if ((k === 'delete' || k === 'backspace') && S.mode === 'setup' && S.sel >= 0) objAction('del');
   updateSteer();
 });
-addEventListener('keyup', e => {
-  const k = e.key.toLowerCase(); keys[k] = false;
-  if (k === ' ') releaseLaunch();
-  updateSteer();
-});
-function updateSteer() { steerAxis = ((keys['a'] || keys['arrowleft']) ? 1 : 0) - ((keys['d'] || keys['arrowright']) ? 1 : 0); }
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[k] = false; if (k === ' ') releaseLaunch(); updateSteer(); });
+function updateSteer() { steerAxis = clamp(((keys['a'] || keys['arrowleft']) ? 1 : 0) - ((keys['d'] || keys['arrowright']) ? 1 : 0) + steerTouch, -1, 1); }
 
 const cv = renderer.domElement;
-const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-let drag = null;
-cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, moved: 0 }; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), _hit = new THREE.Vector3();
+const ptrs = new Map(); let gest = null, pinch = null;
+function setRay(e) { ndc.set(e.clientX / view.w * 2 - 1, -(e.clientY / view.h) * 2 + 1); ray.setFromCamera(ndc, camera); }
+function groundHit(e, y = 0) { setRay(e); groundPlane.constant = -y; return ray.ray.intersectPlane(groundPlane, _hit) ? _hit.clone() : null; }
+function pickObject(e) { setRay(e); const h = ray.intersectObjects(track.pickers, false)[0]; return h ? h.object.userData.idx : -1; }
+
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; gest = { type: 'pinch' }; return;
+  }
+  if (ptrs.size > 2) return;
+  const setup = S.mode === 'setup';
+  if (setup && S.tool === 'path' && e.button !== 2) {
+    const g = groundHit(e); if (g) { S.path = [[g.x, g.z]]; track.setPath(S.path); } gest = { type: 'path' }; return;
+  }
+  if (setup && e.button !== 2 && !e.shiftKey) {
+    const idx = pickObject(e);
+    if (idx >= 0) {
+      const o = S.objects[idx], g = groundHit(e, o.y);
+      selectObj(idx, false);
+      gest = { type: 'obj', idx, ox: g ? o.x - g.x : 0, oz: g ? o.z - g.z : 0, moved: 0, x: e.clientX, y: e.clientY }; return;
+    }
+  }
+  gest = { type: e.button === 2 || e.shiftKey ? 'pan' : 'cam', moved: 0, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY };
+});
 cv.addEventListener('pointermove', e => {
-  if (drag) {
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
+  const p = ptrs.get(e.pointerId);
+  if (!p) { if (S.mode === 'setup' && e.pointerType === 'mouse') cv.style.cursor = (S.tool === 'path' ? 'crosshair' : (pickObject(e) >= 0 ? 'move' : (S.tool ? 'copy' : 'grab'))); return; }
+  p.x = e.clientX; p.y = e.clientY;
+  if (!gest) return;
+  if (gest.type === 'pinch' && ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    if (S.mode === 'setup' || S.cam === 'free') {
+      orbit.dist = clamp(orbit.dist * pinch.d / Math.max(d, 1), 4, 160);
+      const k = orbit.dist * 0.0016; panTarget(-(mx - pinch.mx) * k, (my - pinch.my) * k);
+    }
+    pinch.d = d; pinch.mx = mx; pinch.my = my; return;
+  }
+  if (gest.type === 'path') {
+    const g = groundHit(e); if (!g) return;
+    const l = S.path[S.path.length - 1];
+    if (Math.hypot(g.x - l[0], g.z - l[1]) >= 1.6 && S.path.length < 500) { S.path.push([g.x, g.z]); track.setPath(S.path); }
+  } else if (gest.type === 'obj') {
+    const o = S.objects[gest.idx], g = groundHit(e, o.y); if (!g) return;
+    gest.moved += Math.abs(e.clientX - gest.x) + Math.abs(e.clientY - gest.y); gest.x = e.clientX; gest.y = e.clientY;
+    if (gest.moved > 5) { o.x = g.x + gest.ox; o.z = g.z + gest.oz; track.moveSelRing(o.x, o.z, o.y); track.pickers[gest.idx].position.set(o.x, o.y + 1.5, o.z); gest.dirty = true; }
+  } else if (gest.type === 'pan') {
+    const dx = e.clientX - gest.x, dy = e.clientY - gest.y; gest.x = e.clientX; gest.y = e.clientY; const k = orbit.dist * 0.0016;
+    if (S.mode === 'setup' || S.cam === 'free') panTarget(-dx * k, dy * k);
+  } else if (gest.type === 'cam') {
+    const dx = e.clientX - gest.x, dy = e.clientY - gest.y; gest.moved += Math.abs(dx) + Math.abs(dy); gest.x = e.clientX; gest.y = e.clientY;
     if (S.mode === 'setup' || S.cam === 'free') { orbit.yaw -= dx * 0.006; orbit.pitch = clamp(orbit.pitch + dy * 0.005, 0.03, 1.5); }
-  } else if (S.mode === 'setup') hoverSlot(e);
+  }
 });
-cv.addEventListener('pointerup', e => {
-  if (drag && drag.moved < 6 && S.mode === 'setup') clickSlot(e);
-  drag = null;
-});
-cv.addEventListener('wheel', e => { e.preventDefault(); orbit.dist = clamp(orbit.dist * (1 + Math.sign(e.deltaY) * 0.1), 4, 140); }, { passive: false });
-function pickSlot(e) {
-  ndc.set(e.clientX / view.w * 2 - 1, -(e.clientY / view.h) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  const hit = ray.intersectObjects(track.slotPickers, false)[0];
-  return hit ? hit.object.userData.slot : -1;
+function endPointer(e) {
+  ptrs.delete(e.pointerId);
+  if (!gest) return;
+  const g = gest;
+  if (ptrs.size === 0) gest = null; else if (g.type === 'pinch') { gest = null; pinch = null; return; }
+  if (g.type === 'path') {
+    if (S.path.length < 4) S.path = []; else S.path = smoothPath(S.path);
+    saveState(); build();
+  } else if (g.type === 'obj') {
+    if (g.dirty) { saveState(); build(); }
+  } else if (g.type === 'cam' && g.moved < 7 && S.mode === 'setup') {
+    if (S.tool && OBSTACLES[S.tool]) {
+      const hit = groundHit(e);
+      if (hit) { S.objects.push({ type: S.tool, x: hit.x, z: hit.z, yaw: S.start.yaw, s: 1, y: 0 }); S.sel = S.objects.length - 1; saveState(); build(); }
+    } else if (S.sel >= 0) { S.sel = -1; track.setSelected(-1); updateObjBar(); }
+  }
 }
-function hoverSlot(e) { const i = pickSlot(e); track.setHover(i); cv.style.cursor = i >= 0 ? 'pointer' : 'grab'; }
-function clickSlot(e) { const i = pickSlot(e); if (i >= 0) toggleSlot(i); }
-function toggleSlot(i) {
-  S.slots[i] = S.slots[i] === S.selectedObstacle ? null : S.selectedObstacle;
-  build();
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+cv.addEventListener('wheel', e => { e.preventDefault(); orbit.dist = clamp(orbit.dist * (1 + Math.sign(e.deltaY) * 0.1), 4, 160); }, { passive: false });
+
+function smoothPath(p) {
+  let a = p;
+  for (let it = 0; it < 2; it++) {
+    const b = [a[0]];
+    for (let i = 0; i < a.length - 1; i++) b.push([a[i][0] * 0.75 + a[i + 1][0] * 0.25, a[i][1] * 0.75 + a[i + 1][1] * 0.25], [a[i][0] * 0.25 + a[i + 1][0] * 0.75, a[i][1] * 0.25 + a[i + 1][1] * 0.75]);
+    b.push(a[a.length - 1]); a = b;
+  }
+  const out = [a[0]];
+  for (const q of a) { const l = out[out.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) >= 1.5) out.push(q); }
+  return out;
 }
+
+// ===================================================== object editing
+function selectObj(i, rebuildRing = true) { S.sel = i; track.setSelected(i); updateObjBar(); }
+function updateObjBar() {
+  const o = S.objects[S.sel], bar = $('objBar');
+  bar.style.display = (S.mode === 'setup' && o) ? 'flex' : 'none';
+  if (o) $('objName').textContent = `${OBSTACLES[o.type].icon} ${OBSTACLES[o.type].label} • ${Math.round(THREE.MathUtils.radToDeg(o.yaw)) % 360}° • ×${o.s.toFixed(2)} • ↕${o.y.toFixed(1)}m`;
+}
+function objAction(a) {
+  const o = S.objects[S.sel]; if (!o) return;
+  if (a === 'rl') o.yaw += Math.PI / 12; if (a === 'rr') o.yaw -= Math.PI / 12;
+  if (a === 'sm') o.s = Math.max(0.4, o.s / 1.18); if (a === 'sp') o.s = Math.min(3, o.s * 1.18);
+  if (a === 'up') o.y = Math.min(15, o.y + 0.5); if (a === 'dn') o.y = Math.max(0, o.y - 0.5);
+  if (a === 'dup') { S.objects.push({ ...o, x: o.x + 6 * Math.cos(o.yaw), z: o.z - 6 * Math.sin(o.yaw) }); S.sel = S.objects.length - 1; }
+  if (a === 'del') { S.objects.splice(S.sel, 1); S.sel = -1; }
+  saveState(); build();
+}
+document.querySelectorAll('#objBar [data-a]').forEach(b => b.addEventListener('click', () => objAction(b.dataset.a)));
 
 // ===================================================== UI wiring
 function setUIMode() {
   const m = S.mode;
+  document.body.dataset.mode = m;
   $('setup').style.display = m === 'setup' ? 'block' : 'none';
-  $('minimap').style.display = m === 'setup' ? 'block' : 'none';
   $('launch').style.display = (m === 'setup' || m === 'launching' || m === 'running') ? 'block' : 'none';
-  $('bPause').style.display = (m === 'running' || m === 'ended') && m !== 'replay' ? 'inline-block' : 'none';
+  $('bPause').style.display = (m === 'running' || m === 'ended') ? 'inline-block' : 'none';
   $('bCam').style.display = m === 'setup' ? 'none' : 'inline-block';
+  $('touchCtl').style.display = (IS_TOUCH && m === 'running' && S.steer && car) ? 'flex' : 'none';
   const bl = $('bLaunch');
   if (m === 'running') {
-    const canEject = dummy && dummy.attached;
-    bl.className = 'eject'; bl.style.visibility = canEject ? 'visible' : 'hidden';
+    bl.className = 'eject'; bl.style.visibility = (dummy && dummy.attached) ? 'visible' : 'hidden';
     bl.innerHTML = 'DISMOUNT! <small>(MEZERNÍK)</small>';
-    $('hint').textContent = S.steer && car ? 'A / D = řízení • MEZERNÍK = vyhodit figurínu • C = kamera • P = pauza/replay' : 'MEZERNÍK = vyhodit figurínu • C = kamera • P = pauza/replay • R = restart';
+    $('hint').textContent = IS_TOUCH ? '' : (S.steer && car ? 'A / D = řízení • MEZERNÍK = vyhodit figurínu • C = kamera • P = pauza/replay' : 'MEZERNÍK = vyhodit figurínu • C = kamera • P = pauza/replay • R = restart');
   } else if (m === 'setup') {
     bl.className = ''; bl.style.visibility = 'visible';
-    bl.innerHTML = 'PODRŽ = NABÍJEJ &nbsp;•&nbsp; PUSŤ = ODPAL <small>(MEZERNÍK)</small>';
-    $('hint').textContent = 'Vyber překážku vlevo a klikni na slot na trati (nebo na minimapu)';
-  } else $('hint').textContent = m === 'ended' ? 'R = znovu • tahem myši otáčíš kamerou' : '';
-  $('hud').style.display = m === 'replay' ? 'block' : 'block';
-  $('gauges').style.display = m === 'setup' ? 'none' : 'flex';
+    bl.innerHTML = IS_TOUCH ? 'PODRŽ = NABÍJEJ • PUSŤ = ODPAL' : 'PODRŽ = NABÍJEJ &nbsp;•&nbsp; PUSŤ = ODPAL <small>(MEZERNÍK)</small>';
+    $('hint').textContent = S.tool === 'path' ? 'Táhni prstem / myší po zemi – nakresli trasu (začátek = start vozidla)' : (S.tool ? 'Klepni na zem pro umístění překážky' : 'Klepni na překážku pro úpravu • tah = kamera • dva prsty = zoom + posun');
+  } else $('hint').textContent = m === 'ended' ? (IS_TOUCH ? '' : 'R = znovu • tahem myši otáčíš kamerou') : '';
   $('replayBar').style.display = m === 'replay' ? 'flex' : 'none';
+  $('gauges').style.display = m === 'setup' ? 'none' : 'flex';
   if (m !== 'ended') $('result').style.display = 'none';
+  updateObjBar(); refreshSheetH();
 }
+
+// ---- tabs / sheet
+function refreshSheetH() { document.documentElement.style.setProperty('--sheetH', S.mode === 'setup' ? $('setup').offsetHeight + 'px' : '0px'); }
+function openTab(t) {
+  if (S.tab === t && S.sheetOpen) S.sheetOpen = false; else { S.tab = t; S.sheetOpen = true; }
+  applyTabs();
+}
+function closeSheet() { if (IS_TOUCH) { S.sheetOpen = false; applyTabs(); } }
+function applyTabs() {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab && S.sheetOpen));
+  document.querySelectorAll('.tabc').forEach(d => d.style.display = (d.dataset.tab === S.tab && S.sheetOpen) ? 'block' : 'none');
+  $('setup').classList.toggle('open', S.sheetOpen);
+  refreshSheetH();
+}
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => openTab(b.dataset.tab)));
 
 function mkBtns(host, items, cur, cb, fmt) {
   host.innerHTML = '';
@@ -424,22 +549,53 @@ function mkBtns(host, items, cur, cb, fmt) {
     host.appendChild(b);
   });
 }
-mkBtns($('poseBtns'), Object.entries(POSES).filter(([k]) => k !== 'tpose').map(([k, v]) => [k, v.label]), () => S.pose, k => { S.pose = k; build(); });
-mkBtns($('placeBtns'), [['inside', 'V autě'], ['roof', 'Na střeše'], ['hood', 'Na kapotě'], ['road', 'Na silnici']], () => S.place, k => { S.place = k; build(); });
-mkBtns($('obsBtns'), Object.entries(OBSTACLES).map(([k, v]) => [k, v.label]), () => S.selectedObstacle, k => { S.selectedObstacle = k; drawMinimap(); }, (k, l) => `<div style="font-size:18px">${OBSTACLES[k].icon}</div>${l}`);
-$('bClear').onclick = () => { S.slots = SLOT_POS.map(() => null); build(); };
-$('bRandom').onclick = () => { const ks = Object.keys(OBSTACLES); S.slots = SLOT_POS.map(() => Math.random() < 0.65 ? ks[Math.floor(Math.random() * ks.length)] : null); build(); };
-$('chkSteer').onchange = e => { S.steer = e.target.checked; setUIMode(); };
+mkBtns($('vehBtns'), VEHICLE_LIST.map(([k, v]) => [k, v.name]), () => S.vehicle, k => { S.vehicle = k; S.color = null; saveState(); build(); }, (k, l) => `<div class="ic">${VEHICLES[k].icon}</div>${l}`);
+{
+  const host = $('colBtns'); host.innerHTML = '';
+  COLORS.forEach(c => { const b = document.createElement('button'); b.className = 'sw'; b.style.background = '#' + c.toString(16).padStart(6, '0'); b.onclick = () => { S.color = c; saveState(); build(); }; host.appendChild(b); });
+}
+mkBtns($('poseBtns'), Object.entries(POSES).filter(([k]) => k !== 'tpose').map(([k, v]) => [k, v.label]), () => S.pose, k => { S.pose = k; saveState(); build(); });
+mkBtns($('placeBtns'), [['inside', 'Uvnitř'], ['roof', 'Na střeše'], ['hood', 'Na kapotě'], ['road', 'Bez vozidla']], () => S.place, k => { S.place = k; saveState(); build(); });
+mkBtns($('mapBtns'), MAP_LIST.map(([k, v]) => [k, v.name]), () => S.map, k => { saveState(); S.map = k; loadLayout(); saveState(); build({ cam: true }); $('mapDesc').textContent = MAPS[k].desc; }, (k, l) => `<div class="ic">${MAPS[k].icon}</div>${l}`);
+$('mapDesc').textContent = MAPS[S.map].desc;
+{
+  const tools = $('obsBtns'); tools.innerHTML = '';
+  const mk = (k, label, icon) => { const b = document.createElement('button'); b.dataset.k = k; b.innerHTML = `<div class="ic">${icon}</div>${label}`; b.onclick = () => { S.tool = S.tool === k ? null : k; refreshTools(); setUIMode(); }; tools.appendChild(b); };
+  for (const [k, v] of Object.entries(OBSTACLES)) mk(k, v.label, v.icon);
+}
+function refreshTools() {
+  document.querySelectorAll('#obsBtns button').forEach(b => b.classList.toggle('on', b.dataset.k === S.tool));
+  $('bDraw').classList.toggle('on', S.tool === 'path'); setUIMode();
+}
+$('bDraw').onclick = () => { S.tool = S.tool === 'path' ? null : 'path'; if (S.tool === 'path') { S.sel = -1; } refreshTools(); if (S.tool === 'path') topView(); };
+$('bClearPath').onclick = () => { S.path = []; saveState(); build(); };
+$('bClearObjs').onclick = () => { S.objects = []; S.sel = -1; saveState(); build(); };
+$('bResetMap').onclick = () => { delete layouts[S.map]; loadLayout(); saveState(); build({ cam: true }); };
+function topView() { orbit.pitch = 1.45; orbit.dist = Math.max(orbit.dist, 45); }
+$('bTop').onclick = topView;
+$('bBehind').onclick = () => { orbit.pitch = 0.42; orbit.dist = 30; orbit.yaw = S.start.yaw; orbit.target.set(S.start.x + S.start.hx * 18, 1.5, S.start.z + S.start.hz * 18); };
+$('chkSteer').checked = !!S.steer;
+$('chkSteer').onchange = e => { S.steer = e.target.checked; saveState(); setUIMode(); };
+$('bQual').textContent = 'Kvalita: ' + ({ high: 'vysoká', med: 'střední', low: 'nízká' })[S.quality];
+$('bQual').onclick = () => { const o = ['high', 'med', 'low'], q = o[(o.indexOf(S.quality) + 1) % 3]; setQuality(q); $('bQual').textContent = 'Kvalita: ' + ({ high: 'vysoká', med: 'střední', low: 'nízká' })[q]; };
+$('bFull').onclick = () => { const d = document.documentElement; if (document.fullscreenElement) document.exitFullscreen(); else if (d.requestFullscreen) d.requestFullscreen().catch(() => { }); };
 $('bCam').onclick = () => cycleCam();
 function toggleMute() { setMuted(!S.muted); $('bMute').textContent = S.muted ? '🔇' : '🔊'; }
 $('bMute').onclick = toggleMute;
 $('bPause').onclick = () => togglePause();
 $('bRetry').onclick = () => build();
-$('bSetup').onclick = () => { build(); };
+$('bSetup').onclick = () => build();
 $('bReplay').onclick = () => togglePause();
 const lb = $('bLaunch');
-lb.addEventListener('pointerdown', e => { e.preventDefault(); if (S.mode === 'setup') startLaunch(); else if (S.mode === 'running') doEject(true); });
+lb.addEventListener('pointerdown', e => { e.preventDefault(); lb.setPointerCapture && lb.setPointerCapture(e.pointerId); if (S.mode === 'setup') startLaunch(); else if (S.mode === 'running') doEject(true); });
+lb.addEventListener('pointerup', () => releaseLaunch());
+lb.addEventListener('pointercancel', () => releaseLaunch());
 addEventListener('pointerup', () => releaseLaunch());
+for (const [id, v] of [['tcL', 1], ['tcR', -1]]) {
+  const b = $(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); steerTouch = v; updateSteer(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { steerTouch = 0; updateSteer(); });
+}
 
 // ---- replay UI
 let replayReturn = 'ended';
@@ -447,17 +603,14 @@ function togglePause() {
   if (S.mode === 'replay') return exitReplay();
   if (S.mode !== 'running' && S.mode !== 'ended') return;
   replayReturn = S.mode;
-  if (S.mode === 'running') { rec.capture(); }
+  if (S.mode === 'running') rec.capture();
   S.mode = 'replay'; replay.begin(car, true); replay.playing = false; replay.t = rec.duration;
-  track.setSlotsVisible(false);
+  track.setEditorVisible(false);
   if (S.cam === 'free') cycleCam('chase');
-  cs.init = false;
-  $('rPlay').textContent = '▶'; setUIMode();
-  $('bReplay').textContent = '⏪ REPLAY'; $('result').style.display = 'none';
+  cs.init = false; $('rPlay').textContent = '▶'; setUIMode(); $('result').style.display = 'none';
 }
 function exitReplay() {
-  replay.end();
-  S.mode = replayReturn;
+  replay.end(); S.mode = replayReturn;
   if (S.mode === 'running') { syncEntities(); car && car.syncWheels(); }
   if (S.mode === 'ended') { rec.apply(rec.duration); $('result').style.display = 'block'; }
   cs.init = false; setUIMode();
@@ -478,33 +631,8 @@ $('rScrub').oninput = e => { clearParticles(); cs.init = false; replay.seek(+e.t
 }
 function emitReplayFx(e) { fx(e.type, e.x, e.y, e.z, e.a, e.extra); }
 
-// ---- minimap
-const mm = $('minimap'), mg = mm.getContext('2d');
-const mmY = z => 14 + (-z + 20) / 420 * 392;
-function drawMinimap() {
-  mg.clearRect(0, 0, mm.width, mm.height);
-  mg.fillStyle = '#2a2d33'; mg.fillRect(26, 6, 32, 408);
-  mg.strokeStyle = '#ffc02a'; mg.setLineDash([6, 8]); mg.beginPath(); mg.moveTo(42, 6); mg.lineTo(42, 414); mg.stroke(); mg.setLineDash([]);
-  mg.fillStyle = '#fff'; mg.fillRect(26, mmY(4), 32, 2);
-  mg.fillStyle = '#ff4040'; mg.fillRect(20, mmY(END_Z), 44, 4);
-  mg.textAlign = 'center'; mg.font = 'bold 13px sans-serif'; mg.textBaseline = 'middle';
-  SLOT_POS.forEach(([x, z], i) => {
-    const px = 42 + x * 2.3, py = mmY(z), t = S.slots[i];
-    mg.beginPath(); mg.arc(px, py, 11, 0, 7); mg.fillStyle = t ? '#ffc02a' : 'rgba(79,214,255,.35)'; mg.fill(); mg.strokeStyle = '#fff'; mg.stroke();
-    mg.fillStyle = t ? '#111' : '#fff'; mg.fillText(t ? OBSTACLES[t].icon : String(i + 1), px, py + 1);
-  });
-  mg.fillStyle = '#25d940'; mg.fillRect(2, mmY(orbitTargetZ) - 2, 12, 4);
-}
-mm.addEventListener('pointerdown', e => {
-  const r = mm.getBoundingClientRect(), x = (e.clientX - r.left) * mm.width / r.width, y = (e.clientY - r.top) * mm.height / r.height;
-  let hit = -1;
-  SLOT_POS.forEach(([sx, sz], i) => { if (Math.hypot(42 + sx * 2.3 - x, mmY(sz) - y) < 14) hit = i; });
-  if (hit >= 0) toggleSlot(hit);
-  else { orbitTargetZ = clamp(20 - (y - 14) / 392 * 420, END_Z, 20); drawMinimap(); }
-});
-
 // ===================================================== main loop
-function renderOverlay(scn, cam, el, t) {
+function renderOverlay(scn, cam, el) {
   const r = el.getBoundingClientRect(); if (r.width < 2) return;
   const x = r.left, y = view.h - r.bottom;
   renderer.autoClear = false; renderer.setScissorTest(true);
@@ -524,7 +652,11 @@ function frame(now) {
     meterT += dt; const ph = (meterT / 1.05) % 2; S.power = ph < 1 ? ph : 2 - ph;
     $('meterFill').style.width = (S.power * 100) + '%'; $('needle').style.left = `calc(${S.power * 100}% - 2px)`; $('meterVal').textContent = Math.round(S.power * 100);
   }
-  if (S.mode === 'setup') { if (keys['w'] || keys['arrowup']) { orbitTargetZ = Math.max(END_Z, orbitTargetZ - 60 * dt); drawMinimap(); } if (keys['s'] || keys['arrowdown']) { orbitTargetZ = Math.min(20, orbitTargetZ + 60 * dt); drawMinimap(); } }
+  if (S.mode === 'setup') {
+    const sp = orbit.dist * 0.9 * dt;
+    const r = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0), f = (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0);
+    if (r || f) panTarget(r * sp, f * sp);
+  }
   if (S.mode === 'running') {
     acc += dt; let n = 0;
     while (acc >= H && n < 6) { physicsStep(H); acc -= H; n++; if (S.mode !== 'running') break; }
@@ -536,57 +668,49 @@ function frame(now) {
     const sc2 = $('rScrub'); if (document.activeElement !== sc2) sc2.value = rec.duration ? replay.t / rec.duration * 1000 : 0;
     $('rTime').textContent = `${replay.t.toFixed(1)} / ${rec.duration.toFixed(1)} s`;
     if (!replay.playing) $('rPlay').textContent = '▶';
-  } else if (S.mode === 'setup' || S.mode === 'launching') {
-    track.update(now / 1000);
   }
   track && track.update(now / 1000);
   updateParticles(simDt);
   updateCamera(dt);
-  // HUD
   hudT += dt;
   if (hudT > 0.05 && S.mode !== 'setup') {
     hudT = 0;
     const sj = subject();
     const v = S.mode === 'replay' ? cs.sp : (sj.useDummy ? dummy.pelvis.body.velocity.length() : car.body.velocity.length());
     $('gSpeed').textContent = Math.round(v * 3.6);
-    $('gDist').textContent = Math.max(0, Math.round(startZ - sj.mesh.position.z));
+    $('gDist').textContent = Math.round(Math.hypot(sj.mesh.position.x - S.start.x, sj.mesh.position.z - S.start.z));
     $('gTime').textContent = (S.mode === 'replay' ? replay.t : S.time).toFixed(1);
     const air = S.mode === 'running' && airT > 0.7; $('airBadge').style.display = air ? 'block' : 'none'; if (air) $('airT').textContent = airT.toFixed(1);
     $('bLaunch').style.visibility = (S.mode === 'running' && !(dummy && dummy.attached)) ? 'hidden' : 'visible';
   }
   if (S.mode === 'running' || S.mode === 'ended') {
-    const T = total(); const el = $('score');
+    const T = total(), el = $('score');
     if (T !== scoreShown) { el.textContent = T.toLocaleString('cs-CZ'); if (T - scoreShown > 80) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } scoreShown = T; }
   } else if (S.mode === 'setup') { scoreShown = 0; $('score').textContent = S.best ? S.best.toLocaleString('cs-CZ') : '0'; $('scoreLabel').textContent = S.best ? 'REKORD' : 'SKÓRE'; }
   if (S.mode !== 'setup') $('scoreLabel').textContent = 'SKÓRE';
-  // audio + post fx
   if (S.mode === 'running' && car) engineSound(car.speed, car.engineOn && !car.crashed);
   bloomPass.strength += (0.5 - bloomPass.strength) * Math.min(1, dt * 3);
   const spd = S.mode === 'replay' ? cs.sp : (car && S.mode === 'running' ? car.speed : (dummy ? dummy.speed : 0));
-  blurPass.uniforms.strength.value = clamp((spd - 26) / 55, 0, 1) * 0.07;
-  // flash + xray visibility
+  blurPass.uniforms.strength.value = (S.quality === 'low' ? 0.5 : 1) * clamp((spd - 26) / 55, 0, 1) * 0.07;
   if (S.flash > 0) { $('flash').classList.add('on'); S.flash = 0; setTimeout(() => $('flash').classList.remove('on'), 60); }
-  // sun follows the action
-  const fp = (S.mode === 'setup' ? orbit.target : cs.look);
+  const fp = (S.mode === 'setup' || S.mode === 'launching' ? orbit.target : cs.look);
   sun.target.position.set(Math.round(fp.x), 0, Math.round(fp.z)); sun.position.copy(sun.target.position).add(sunOffset);
   sun.target.updateMatrixWorld();
   scene.userData.dome.position.copy(camera.position);
-  // ---- draw
   composer.render(dt);
   if (S.xrayUntil && performance.now() < S.xrayUntil && S.mode !== 'setup') {
     const pel = dummy.pelvis.mesh.position;
     for (const b of dummy.list) { const xb = xray.bones[b.def.name]; xb.grp.position.copy(b.mesh.position).sub(pel); xb.grp.quaternion.copy(b.mesh.quaternion); }
     renderOverlay(xray.scene, xray.cam, $('xrayFrame'));
   } else if (S.xrayUntil) { S.xrayUntil = 0; $('xrayFrame').style.display = 'none'; }
-  if (S.mode === 'ended' && heat.group) {
-    heat.group.rotation.y = now / 1400;
-    heatR.render(heat.scene, heat.cam);
-  }
+  if (S.mode === 'ended' && heat.group) { heat.group.rotation.y = now / 1400; heatR.render(heat.scene, heat.cam); }
 }
 
 // ===================================================== boot
-build();
-orbit.target.set(0, 1.5, orbitTargetZ);
+addEventListener('resize', () => setTimeout(refreshSheetH, 50));
+build({ cam: true });
+applyTabs();
 $('loading').classList.add('hide');
 requestAnimationFrame(frame);
-window.__game = { step(n) { for (let i = 0; i < n && S.mode === 'running'; i++) physicsStep(H); syncEntities(); }, S, get car() { return car; }, get dummy() { return dummy; }, get track() { return track; }, build, doLaunch, startLaunch, releaseLaunch, get score() { return sc; }, total, rec, replay, entities, togglePause, exitReplay, world, cycleCam };
+window.__game = { step(n) { for (let i = 0; i < n && S.mode === 'running'; i++) physicsStep(H); syncEntities(); }, S, get car() { return car; }, get dummy() { return dummy; }, get track() { return track; }, build, doLaunch, startLaunch, releaseLaunch, get score() { return sc; }, total, rec, replay, entities, togglePause, exitReplay, world, cycleCam, saveState };
+window.__eng = { orbit, composer, bloomPass, blurPass, renderer, scene, camera };

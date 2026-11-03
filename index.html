@@ -2,7 +2,8 @@
 <html lang="cs">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <title>Turbo Crash – 3D Dismount Physics</title>
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
@@ -31,6 +32,7 @@
   <div id="tools">
     <button id="bCam" title="Kamera (C)">📷 <span id="camName">Chase</span></button>
     <button id="bMute" title="Zvuk (M)">🔊</button>
+    <button id="bFull" title="Celá obrazovka">⛶</button>
     <button id="bPause" title="Pauza / Replay (P)">⏸ PAUZA / REPLAY</button>
   </div>
   <div id="flash"></div>
@@ -40,19 +42,45 @@
 
 <!-- setup -->
 <div id="setup" class="panel">
-  <div class="logo small">TURBO&nbsp;CRASH</div>
-  <h3>Póza figuríny</h3>
-  <div class="grid3" id="poseBtns"></div>
-  <h3>Umístění</h3>
-  <div class="grid2" id="placeBtns"></div>
-  <h3>Překážky <small>(vyber a klikni na slot)</small></h3>
-  <div class="grid3" id="obsBtns"></div>
-  <div class="row"><button id="bRandom">🎲 Náhodně</button><button id="bClear">✖ Vyčistit</button></div>
-  <h3>Řízení</h3>
-  <label class="chk"><input type="checkbox" id="chkSteer"> Ruční řízení (A / D)</label>
-  <p class="tip">Tah myší = otáčení kamery • kolečko = zoom • W/S = posun po trati • klik na slot = překážka</p>
+  <div id="tabs">
+    <button data-tab="veh">🚗<span>Vozidlo</span></button>
+    <button data-tab="fig">🧍<span>Figurína</span></button>
+    <button data-tab="map">🗺<span>Mapa</span></button>
+    <button data-tab="obs">🧱<span>Překážky</span></button>
+    <button data-tab="path">✏<span>Trasa</span></button>
+  </div>
+  <div class="tabc" data-tab="veh">
+    <h3>Vozidlo</h3><div class="grid3" id="vehBtns"></div>
+    <h3>Barva</h3><div class="swatches" id="colBtns"></div>
+    <label class="chk"><input type="checkbox" id="chkSteer"> Ruční řízení (A/D nebo tlačítka)</label>
+  </div>
+  <div class="tabc" data-tab="fig">
+    <h3>Póza figuríny</h3><div class="grid3" id="poseBtns"></div>
+    <h3>Umístění</h3><div class="grid2" id="placeBtns"></div>
+  </div>
+  <div class="tabc" data-tab="map">
+    <h3>Mapa</h3><div class="grid3" id="mapBtns"></div>
+    <p class="tip" id="mapDesc"></p>
+    <div class="row"><button id="bResetMap">↺ Výchozí rozložení</button><button id="bQual">Kvalita</button></div>
+  </div>
+  <div class="tabc" data-tab="obs">
+    <h3>Překážky <small>(vyber a klepni na zem)</small></h3><div class="grid4" id="obsBtns"></div>
+    <p class="tip">Klepni na překážku = výběr. Táhni ji prstem = přesun. Pak otáčej / zvětšuj / zvedej tlačítky nahoře.</p>
+    <div class="row"><button id="bClearObjs">✖ Smazat všechny</button></div>
+  </div>
+  <div class="tabc" data-tab="path">
+    <h3>Trasa vozidla</h3>
+    <div class="row"><button id="bDraw">✏ Kreslit trasu</button><button id="bClearPath">🗑 Smazat</button></div>
+    <div class="row"><button id="bTop">⬇ Pohled shora</button><button id="bBehind">🎥 Za vozidlem</button></div>
+    <p class="tip">Zapni kreslení a táhni po zemi. Začátek trasy = místo startu vozidla. Bez trasy jede rovně.</p>
+  </div>
 </div>
-<canvas id="minimap" width="84" height="420"></canvas>
+<div id="objBar">
+  <span id="objName"></span>
+  <button data-a="rl">⟲</button><button data-a="rr">⟳</button><button data-a="sm">−</button><button data-a="sp">+</button>
+  <button data-a="up">⬆</button><button data-a="dn">⬇</button><button data-a="dup">⧉</button><button data-a="del">🗑</button>
+</div>
+<div id="touchCtl"><button id="tcL">◀</button><button id="tcR">▶</button></div>
 
 <!-- launch -->
 <div id="launch">

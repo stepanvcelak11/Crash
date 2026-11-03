@@ -765,7 +765,7 @@ addEventListener('resize', () => setTimeout(refreshSheetH, 50));
 refreshSettings();
 build({ cam: true });
 applyTabs();
-$('loading').classList.add('hide');
+$('loading').classList.add('hide'); setTimeout(() => $('loading').remove(), 900);
 requestAnimationFrame(frame);
 window.__game = { undo, snap, step(n) { for (let i = 0; i < n && S.mode === 'running'; i++) physicsStep(H); syncEntities(); }, S, get car() { return car; }, get dummy() { return dummy; }, get track() { return track; }, build, doLaunch, startLaunch, releaseLaunch, get score() { return sc; }, total, rec, replay, entities, togglePause, exitReplay, world, cycleCam, saveState };
 window.__eng = { orbit, S, composer, bloomPass, blurPass, renderer, scene, camera };

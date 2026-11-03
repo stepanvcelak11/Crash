@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Turbo Crash – 3D Dismount Physics</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three.module.min.js",
+  "three/addons/": "./vendor/addons/",
+  "cannon-es": "./vendor/cannon-es.js"
+} }
+</script>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="loading"><div class="logo">TURBO&nbsp;CRASH</div><div>Načítám fyziku…</div></div>
+
+<!-- score / feed -->
+<div id="hud">
+  <div id="scoreBox"><div id="scoreLabel">SKÓRE</div><div id="score">0</div></div>
+  <div id="feed"></div>
+  <div id="gauges">
+    <div><span id="gSpeed">0</span><small>km/h</small></div>
+    <div><span id="gDist">0</span><small>m</small></div>
+    <div><span id="gTime">0.0</span><small>s</small></div>
+  </div>
+  <div id="airBadge">VE VZDUCHU <b id="airT">0.0</b>s</div>
+  <div id="tools">
+    <button id="bCam" title="Kamera (C)">📷 <span id="camName">Chase</span></button>
+    <button id="bMute" title="Zvuk (M)">🔊</button>
+    <button id="bPause" title="Pauza / Replay (P)">⏸ PAUZA / REPLAY</button>
+  </div>
+  <div id="flash"></div>
+  <div id="xrayFrame"><div class="xl">RENTGEN</div><div class="xb" id="xrayBone"></div></div>
+  <div id="hint"></div>
+</div>
+
+<!-- setup -->
+<div id="setup" class="panel">
+  <div class="logo small">TURBO&nbsp;CRASH</div>
+  <h3>Póza figuríny</h3>
+  <div class="grid3" id="poseBtns"></div>
+  <h3>Umístění</h3>
+  <div class="grid2" id="placeBtns"></div>
+  <h3>Překážky <small>(vyber a klikni na slot)</small></h3>
+  <div class="grid3" id="obsBtns"></div>
+  <div class="row"><button id="bRandom">🎲 Náhodně</button><button id="bClear">✖ Vyčistit</button></div>
+  <h3>Řízení</h3>
+  <label class="chk"><input type="checkbox" id="chkSteer"> Ruční řízení (A / D)</label>
+  <p class="tip">Tah myší = otáčení kamery • kolečko = zoom • W/S = posun po trati • klik na slot = překážka</p>
+</div>
+<canvas id="minimap" width="84" height="420"></canvas>
+
+<!-- launch -->
+<div id="launch">
+  <div id="meter"><div id="meterFill"></div><div id="needle"></div><div id="meterVal">0</div></div>
+  <button id="bLaunch">PODRŽ = NABÍJEJ &nbsp;•&nbsp; PUSŤ = ODPAL <small>(MEZERNÍK)</small></button>
+</div>
+
+<!-- replay -->
+<div id="replayBar">
+  <button id="rPlay">▶</button>
+  <input type="range" id="rScrub" min="0" max="1000" value="1000">
+  <span id="rTime">0.0 / 0.0 s</span>
+  <div class="speeds" id="rSpeeds"></div>
+  <button id="rExit">Zpět ✕</button>
+</div>
+
+<!-- results -->
+<div id="result" class="panel">
+  <h2>VÝSLEDEK POKUSU</h2>
+  <div class="resRow">
+    <div id="heat"><div class="legend"><i style="background:#25d940"></i>OK <i style="background:#ffd83a"></i>pohmožděnina <i style="background:#ff3030"></i>zlomenina</div></div>
+    <div class="resTbl">
+      <table id="breakdown"></table>
+      <div id="fracList"></div>
+    </div>
+  </div>
+  <div class="resBtns">
+    <button id="bRetry" class="primary">↻ ZNOVU (R)</button>
+    <button id="bReplay">⏪ REPLAY</button>
+    <button id="bSetup">⚙ Nastavení</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

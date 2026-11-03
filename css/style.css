@@ -1,0 +1,78 @@
+:root { --acc: #ffc02a; --acc2: #4fd6ff; --bg: rgba(12, 16, 24, .82); --ok: #25d940; --bad: #ff3535; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f16; color: #fff; font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; user-select: none; touch-action: none; }
+#game, #game canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+button { font: inherit; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 8px 10px; cursor: pointer; transition: .12s; }
+button:hover { background: rgba(255,255,255,.2); }
+button.on { background: var(--acc); color: #111; border-color: var(--acc); font-weight: 700; }
+button.primary { background: var(--acc); color: #111; font-weight: 800; border-color: var(--acc); }
+.logo { font-weight: 900; letter-spacing: .12em; font-size: 34px; color: var(--acc); text-shadow: 0 3px 0 #7a4b00; font-style: italic; }
+.logo.small { font-size: 22px; margin-bottom: 4px; }
+#loading { position: fixed; inset: 0; z-index: 100; background: #0b0f16; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; transition: opacity .5s; }
+#loading.hide { opacity: 0; pointer-events: none; }
+
+.panel { position: fixed; background: var(--bg); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.15); border-radius: 14px; padding: 14px; z-index: 10; }
+#setup { left: 14px; top: 14px; width: 270px; max-height: calc(100% - 28px); overflow: auto; }
+#setup h3 { margin: 12px 0 6px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--acc2); }
+#setup h3 small { color: #aab; text-transform: none; letter-spacing: 0; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.grid3 button, .grid2 button { padding: 8px 4px; font-size: 13px; }
+.row { display: flex; gap: 6px; margin-top: 8px; } .row button { flex: 1; font-size: 13px; }
+.chk { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.tip { font-size: 11px; color: #9ab; margin: 10px 0 0; line-height: 1.4; }
+#minimap { position: fixed; right: 14px; top: 90px; z-index: 9; background: var(--bg); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; cursor: pointer; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+#hud button { pointer-events: auto; }
+#scoreBox { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; text-shadow: 0 3px 8px #000; }
+#scoreLabel { font-size: 12px; letter-spacing: .3em; color: var(--acc2); }
+#score { font-size: 48px; font-weight: 900; font-style: italic; color: var(--acc); line-height: 1; font-variant-numeric: tabular-nums; }
+#score.pop { animation: pop .25s; } @keyframes pop { 50% { transform: scale(1.18); } }
+#feed { position: absolute; right: 120px; top: 12px; width: 280px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.fi { background: rgba(10,14,22,.75); border-left: 4px solid var(--acc); padding: 4px 10px; font-size: 14px; font-weight: 700; border-radius: 4px; animation: fin .25s, fout .5s 3s forwards; }
+.fi.bad { border-color: var(--bad); } .fi b { color: var(--acc); }
+@keyframes fin { from { transform: translateX(40px); opacity: 0; } } @keyframes fout { to { opacity: 0; transform: translateY(-10px); } }
+#gauges { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 18px; font-style: italic; text-shadow: 0 2px 6px #000; }
+#gauges div { display: flex; align-items: baseline; gap: 4px; } #gauges span { font-size: 34px; font-weight: 900; min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; } #gauges small { color: var(--acc2); }
+#airBadge { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); background: rgba(79,214,255,.85); color: #002; padding: 4px 14px; border-radius: 20px; font-weight: 800; display: none; }
+#tools { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+#flash { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,.42)); opacity: 0; transition: opacity .5s; }
+#flash.on { opacity: 1; transition: none; }
+#xrayFrame { position: absolute; left: 14px; top: 50%; width: 250px; height: 330px; margin-top: -165px; border: 2px solid #5ad7ff; border-radius: 8px; display: none; box-shadow: 0 0 24px rgba(90,215,255,.5); }
+#xrayFrame .xl { position: absolute; top: 6px; left: 8px; font-size: 11px; letter-spacing: .25em; color: #5ad7ff; font-weight: 800; }
+#xrayFrame .xb { position: absolute; bottom: 8px; width: 100%; text-align: center; font-weight: 800; color: #ff6a6a; text-shadow: 0 0 8px #f00; }
+#hint { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); font-size: 15px; color: #fff; text-shadow: 0 2px 6px #000; text-align: center; font-weight: 600; }
+
+#launch { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 11; text-align: center; width: min(560px, 92vw); }
+#meter { position: relative; height: 26px; background: rgba(0,0,0,.65); border: 2px solid #fff; border-radius: 14px; overflow: hidden; margin-bottom: 8px; display: none; }
+#meterFill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #25d940, #ffd83a 60%, #ff3535); }
+#needle { position: absolute; top: -2px; bottom: -2px; width: 5px; background: #fff; box-shadow: 0 0 8px #fff; left: 0; }
+#meterVal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 900; text-shadow: 0 1px 3px #000; }
+#bLaunch { width: 100%; padding: 16px; font-size: 20px; font-weight: 900; letter-spacing: .05em; background: var(--acc); color: #111; border: none; border-radius: 12px; box-shadow: 0 5px 0 #8a5a00; }
+#bLaunch small { font-weight: 600; opacity: .7; font-size: 12px; }
+#bLaunch:active, #bLaunch.held { transform: translateY(3px); box-shadow: 0 2px 0 #8a5a00; }
+#bLaunch.eject { background: #ff5a3a; box-shadow: 0 5px 0 #7a1a00; color: #fff; }
+
+#replayBar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); width: min(820px, 96vw); z-index: 12; display: none; align-items: center; gap: 10px; background: var(--bg); padding: 10px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.2); flex-wrap: wrap; }
+#rScrub { flex: 1; min-width: 160px; accent-color: var(--acc); }
+#rTime { font-variant-numeric: tabular-nums; font-size: 13px; min-width: 96px; }
+.speeds { display: flex; gap: 4px; } .speeds button { padding: 6px 8px; font-size: 12px; }
+
+#result { right: 14px; top: 50%; transform: translateY(-50%); width: min(560px, 96vw); display: none; z-index: 14; max-height: 96vh; overflow: auto; }
+#result h2 { margin: 0 0 8px; color: var(--acc); font-style: italic; letter-spacing: .08em; }
+.resRow { display: flex; gap: 12px; flex-wrap: wrap; }
+#heat { position: relative; background: radial-gradient(circle at 50% 40%, #1c2a3d, #070a12); width: 190px; height: 330px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); flex: none; }
+.legend { position: absolute; bottom: 4px; left: 0; right: 0; font-size: 10px; text-align: center; color: #cde; } .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 3px 0 6px; }
+.resTbl { flex: 1; min-width: 220px; }
+#breakdown { width: 100%; border-collapse: collapse; font-size: 14px; } #breakdown td { padding: 4px 2px; border-bottom: 1px solid rgba(255,255,255,.1); } #breakdown td:last-child { text-align: right; font-weight: 800; color: var(--acc); font-variant-numeric: tabular-nums; }
+#breakdown tr.total td { font-size: 22px; border-top: 2px solid var(--acc); color: #fff; }
+#breakdown tr.total td:last-child { color: var(--acc); }
+#fracList { margin-top: 8px; font-size: 12px; color: #ff9a9a; line-height: 1.5; }
+.resBtns { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; } .resBtns button { flex: 1; padding: 12px 6px; }
+
+@media (max-width: 760px) {
+  #setup { width: 200px; padding: 10px; font-size: 13px; } #minimap { display: none; }
+  #score { font-size: 34px; } #feed { right: 8px; top: 70px; width: 200px; } #gauges span { font-size: 24px; }
+  #result { right: 2vw; } #xrayFrame { width: 170px; height: 230px; margin-top: -115px; }
+}
